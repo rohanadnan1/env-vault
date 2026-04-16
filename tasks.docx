@@ -1,0 +1,828 @@
+🔐
+EnVault
+Engineering Task List
+Every implementation task required to build the vault, from first commit to production deployment
+163
+Total Tasks
+59
+Security-Critical
+6
+Phases
+Next.js 14
+Stack
+
+How to read this document
+⚠ RED
+Security-critical task
+NORMAL
+Standard task
+→ note
+Implementation detail
+P1-001
+Phase-Task ID
+
+Each row is an atomic, executable task. Tasks marked ⚠ in red are security-critical — they directly affect the zero-knowledge encryption model, access control, or data integrity. Complete these with extra care and double-check them during the security audit in Phase 5.
+Implementation notes (indented → lines) explain exact APIs, algorithms, values, and edge cases to handle within that task. They are not separate tasks.
+
+Phase Summary
+Phase
+Title
+Tasks
+Critical
+Phase 1
+Foundation & Infrastructure
+34
+8
+Phase 2
+Cryptography & Core Vault
+24
+15
+Phase 3
+Projects, Folders & Secrets
+30
+7
+Phase 4
+Import, Export & Sharing
+25
+7
+Phase 5
+Security Hardening & Polish
+38
+19
+Phase 6
+Deployment
+12
+3
+Phase 1 — Foundation & Infrastructure
+Project setup, database schema, NextAuth, Prisma, Tailwind, shadcn/ui
+34 tasks  ·  8 security-critical
+✓
+Task ID
+Task Description  (→ indented lines are implementation notes)
+☐
+P1-001
+Initialise Next.js 14 project with TypeScript template
+  → npx create-next-app@latest envault --typescript --tailwind --eslint --app --src-dir=no --import-alias='@/*'
+☐
+P1-002
+Install all production dependencies in one pass
+  → npm i prisma @prisma/client next-auth@beta zod zustand resend @react-email/components @upstash/ratelimit @upstash/redis bcryptjs @types/bcryptjs
+☐
+P1-003
+Install all dev dependencies
+  → npm i -D @types/node tsx prisma ts-node dotenv-cli
+☐
+P1-004
+Configure tsconfig.json: strict mode on, paths alias @/* → ./*
+☐
+P1-005
+⚠ Create .env.local with all required keys (DATABASE_URL, NEXTAUTH_SECRET, NEXTAUTH_URL, RESEND_API_KEY, RESEND_FROM, UPSTASH_REDIS_REST_URL, UPSTASH_REDIS_REST_TOKEN, NEXT_PUBLIC_APP_URL, SHARE_LINK_BASE)
+☐
+P1-006
+⚠ Create .env.example with all keys present but values blanked — commit this, never .env.local
+☐
+P1-007
+⚠ Add .env.local to .gitignore — verify it is listed before first commit
+☐
+P1-008
+Initialise Prisma: npx prisma init — sets up prisma/schema.prisma and DATABASE_URL in .env
+☐
+P1-009
+Write full Prisma schema: User model with id (cuid), email (unique), name?, image?, vaultSalt?, vaultKdfIter (default 600000), totpSecret?, lastVaultAt?, createdAt, updatedAt
+☐
+P1-010
+Add Account model (NextAuth standard) — id, userId FK→User, type, provider, providerAccountId, refresh_token?, access_token?, expires_at?, token_type?, scope?, id_token?, session_state?
+☐
+P1-011
+Add Session model (NextAuth standard) — id, sessionToken (unique), userId FK→User, expires
+☐
+P1-012
+Add VerificationToken model (NextAuth standard) — identifier, token, expires; @@unique([identifier, token])
+☐
+P1-013
+Add Project model — id, name, description?, color (default #6366F1), emoji (default 📁), userId FK→User (cascade delete), createdAt, updatedAt
+☐
+P1-014
+Add Environment model — id, name, projectId FK→Project (cascade), createdAt; @@unique([projectId, name])
+☐
+P1-015
+Add Folder model — id, name, environmentId FK→Environment (cascade), parentId? (self-relation FK→Folder, named FolderTree), children Folder[] (named FolderTree), createdAt, updatedAt
+☐
+P1-016
+⚠ Add Secret model — id, keyName (String — plaintext), valueEncrypted (String — base64 AES-GCM ciphertext), iv (String — base64 12-byte IV), tags (String[]), environmentId FK→Environment (cascade), folderId? FK→Folder; @@unique([environmentId, folderId, keyName]); createdAt, updatedAt
+☐
+P1-017
+Add SecretHistory model — id, secretId FK→Secret (cascade), valueEncrypted, iv, createdAt. No updatedAt — history rows are immutable
+☐
+P1-018
+Add VaultFile model — id, name (filename string), contentEncrypted (base64), iv (base64), mimeType (default text/plain), folderId FK→Folder (cascade), createdAt, updatedAt
+☐
+P1-019
+⚠ Add Share model — id, projectId? FK→Project, scopeType (String: project|environment|folder|keys), scopeId, bundleEncrypted (base64), bundleIv, shareSalt (base64 32 bytes), accessToken (String unique), expiresAt (DateTime?), singleUse (Boolean default false), isRevoked (Boolean default false), sharedById FK→User (named SharedBy), recipientEmail?, note?, createdAt
+☐
+P1-020
+Add ShareAccess model — id, shareId FK→Share (cascade), userId? FK→User, ipAddress?, userAgent?, accessedAt
+☐
+P1-021
+Run first migration: npx prisma migrate dev --name init
+☐
+P1-022
+Run npx prisma generate to build the typed Prisma client
+☐
+P1-023
+Create lib/db.ts — Prisma client singleton with globalThis caching to prevent hot-reload connection leaks in dev
+☐
+P1-024
+Create lib/auth.ts — NextAuth v5 config object with Prisma adapter, session strategy JWT
+☐
+P1-025
+⚠ Add Credentials provider to auth config — accepts email + password, queries DB, runs bcrypt.compare, returns user or null. Never return password hash.
+☐
+P1-026
+Add Email provider (magic link) to auth config — uses Resend as transport
+☐
+P1-027
+⚠ Configure JWT callbacks: include user.id in the token on signIn, expose it as session.user.id in session callback
+☐
+P1-028
+Create app/api/auth/[...nextauth]/route.ts — export GET and POST handlers from NextAuth
+☐
+P1-029
+⚠ Create middleware.ts — protect all /dashboard and /projects routes, redirect unauthenticated to /login
+☐
+P1-030
+Configure tailwind.config.ts: content paths include app/**/*.tsx and components/**/*.tsx
+☐
+P1-031
+Initialise shadcn/ui: npx shadcn-ui@latest init — choose New York style, slate base color
+☐
+P1-032
+Install required shadcn components: button, input, label, dialog, dropdown-menu, badge, toast, tooltip, skeleton, separator, card, tabs, popover, command, alert
+  → npx shadcn-ui@latest add button input label dialog dropdown-menu badge toast tooltip skeleton separator card tabs popover command alert
+☐
+P1-033
+Create app/layout.tsx — root layout with Toaster provider, SessionProvider wrapper, correct <html lang> and <body> class
+☐
+P1-034
+Create app/globals.css — import Tailwind base/components/utilities, add any CSS variables needed for custom colours
+Phase 2 — Cryptography & Core Vault
+All crypto primitives, Zustand store, vault unlock, auth pages
+24 tasks  ·  15 security-critical
+✓
+Task ID
+Task Description  (→ indented lines are implementation notes)
+☐
+P2-001
+⚠ Create lib/crypto/utils.ts — toBase64(buffer): string, fromBase64(str): Uint8Array, generateRandomBytes(n): Uint8Array using crypto.getRandomValues
+☐
+P2-002
+⚠ Create lib/crypto/vault.ts — export deriveVaultKey(masterPassword: string, saltBase64: string, iterations = 600_000): Promise<CryptoKey>
+  → Use crypto.subtle.importKey with algorithm PBKDF2 and usages ['deriveKey']
+  → Use crypto.subtle.deriveKey with {name:'PBKDF2', salt, iterations, hash:'SHA-256'} → {name:'AES-GCM', length:256}
+  → Set extractable: false — key must never be extractable from memory as raw bytes
+☐
+P2-003
+⚠ Create lib/crypto/encrypt.ts — export encryptSecret(plaintext: string, key: CryptoKey, aad?: string): Promise<{valueEncrypted: string, iv: string}>
+  → Generate fresh 12-byte IV with crypto.getRandomValues every call — never reuse IV
+  → Set additionalData to new TextEncoder().encode(aad) when aad is provided
+  → tagLength must be 128
+  → Return base64-encoded ciphertext and base64-encoded IV
+☐
+P2-004
+⚠ Create lib/crypto/decrypt.ts — export decryptSecret(valueEncrypted: string, iv: string, key: CryptoKey, aad?: string): Promise<string>
+  → On AES-GCM auth tag failure, throw a typed error: class DecryptionError extends Error
+  → Never log plaintext in catch blocks
+  → Return decoded UTF-8 string
+☐
+P2-005
+⚠ Create lib/crypto/share.ts — export encryptShareBundle(secrets: {keyName,plaintext}[], shareKey: CryptoKey): Promise<{bundleEncrypted: string, bundleIv: string}>
+  → Serialise the array to JSON, encrypt as a single blob with the share key
+  → Return base64 bundleEncrypted + base64 bundleIv
+☐
+P2-006
+⚠ Add decryptShareBundle(bundleEncrypted: string, bundleIv: string, shareKey: CryptoKey) to lib/crypto/share.ts
+  → Parse JSON after decryption — return typed array {keyName: string, value: string}[]
+☐
+P2-007
+⚠ Write unit tests for all crypto functions using Node's built-in test runner (node:test)
+  → Test round-trip: encrypt then decrypt returns original string
+  → Test wrong key → DecryptionError thrown
+  → Test wrong AAD → DecryptionError thrown
+  → Test IV is never reused across two calls
+☐
+P2-008
+⚠ Create lib/store/vaultStore.ts — Zustand store with fields: derivedKey (CryptoKey|null), isUnlocked (boolean), lastActivity (number, unix ms)
+☐
+P2-009
+Add unlock(key: CryptoKey) action: set derivedKey, isUnlocked=true, lastActivity=Date.now()
+☐
+P2-010
+⚠ Add lock() action: set derivedKey=null, isUnlocked=false
+  → This is the ONLY place the key reference is cleared — ensure no other component holds a copy
+☐
+P2-011
+Add touchActivity() action: set lastActivity=Date.now()
+☐
+P2-012
+⚠ Create useAutoLock(timeoutMs) hook in lib/store/vaultStore.ts — setInterval every 30s checks Date.now()-lastActivity > timeoutMs, calls lock() if true. Clears interval on unmount.
+☐
+P2-013
+⚠ Add window.addEventListener('visibilitychange') in the vault layout to call lock() when document becomes hidden (tab switch / phone lock)
+☐
+P2-014
+⚠ Create app/api/vault/salt/route.ts — GET handler. Authenticate session. If user.vaultSalt is null, generate 32 random bytes via crypto.randomBytes (server-side Node), save to DB as base64, return it. Otherwise return existing salt.
+  → This is the only salt-generation endpoint — call it once on first vault setup
+☐
+P2-015
+Create app/(auth)/layout.tsx — centred single-card layout, no navbar, branded logo at top
+☐
+P2-016
+Create app/(auth)/login/page.tsx — email + password form with React state, calls signIn('credentials'), shows error toast on failure, redirects to /dashboard on success
+☐
+P2-017
+Create app/(auth)/register/page.tsx — name + email + password + confirm-password fields. On submit: POST to /api/auth/register (create below). Validate with Zod client-side before submission.
+☐
+P2-018
+⚠ Create app/api/auth/register/route.ts — POST handler. Zod validate body. Check email not already registered. Hash password with bcrypt (saltRounds=12). Create User in DB. Return 201.
+  → Use bcrypt saltRounds=12 — not less. saltRounds=10 is too fast for a vault app.
+☐
+P2-019
+Create app/(auth)/verify/page.tsx — shows 'check your email' message with resend link
+☐
+P2-020
+⚠ Create app/(vault)/layout.tsx — wraps all vault pages. On mount: check isUnlocked from store. If false, render VaultUnlock modal overlay (fullscreen, non-dismissible). After unlock, render children. Call useAutoLock here.
+☐
+P2-021
+⚠ Create components/vault/VaultUnlock.tsx — full-screen modal overlay. Password input (type=password). On submit: fetch /api/vault/salt, run deriveVaultKey, call store.unlock(key). Show spinner during PBKDF2 (600k iterations ~1-2s). Show generic 'Unable to unlock' on wrong password with no iteration count hint.
+  → Do not reveal attempt counts or lockout thresholds in the UI
+  → Use a loading state during key derivation — PBKDF2 at 600k rounds blocks the UI thread, so run it in a short setTimeout(0) to allow the spinner to render first
+☐
+P2-022
+Create components/layout/Navbar.tsx — app logo, project breadcrumb, VaultLockButton (always visible), user avatar dropdown (settings, sign out)
+☐
+P2-023
+Create components/layout/VaultLockButton.tsx — clicking it calls store.lock() and redirects to /dashboard (vault re-lock). Show red lock icon when unlocked, grey when locked.
+☐
+P2-024
+Create components/layout/Sidebar.tsx — project list in left sidebar with icons, active state, new project button
+Phase 3 — Projects, Folders & Secrets
+Full CRUD for projects, environments, folders, secrets, vault files
+30 tasks  ·  7 security-critical
+✓
+Task ID
+Task Description  (→ indented lines are implementation notes)
+☐
+P3-001
+Create lib/validations/schemas.ts — Zod schema: CreateProjectSchema {name: min 1 max 50, description?: max 200, color?: hex string, emoji?: string max 2}
+☐
+P3-002
+Add CreateEnvironmentSchema {name: min 1 max 30, projectId: cuid}
+☐
+P3-003
+Add CreateFolderSchema {name: min 1 max 100, environmentId: cuid, parentId?: cuid}
+☐
+P3-004
+Add CreateSecretSchema {keyName: regex /^[A-Z0-9_]+$/ max 200, valueEncrypted: string, iv: string, environmentId: cuid, folderId?: cuid, tags?: string[] max 5 items}
+  → Key names must match ENV VAR format — uppercase letters, digits, underscores only. Enforce with regex.
+☐
+P3-005
+Add UpdateSecretSchema {valueEncrypted: string, iv: string}
+☐
+P3-006
+Add CreateVaultFileSchema {name: min 1 max 255, contentEncrypted: string, iv: string, mimeType?: string, folderId: cuid}
+☐
+P3-007
+Add CreateShareSchema {bundleEncrypted, bundleIv, shareSalt, scopeType: enum, scopeId: cuid, expiresIn?: enum('1h'|'24h'|'7d'|'30d'|'never'), singleUse: boolean, recipientEmail?: email, note?: max 500}
+☐
+P3-008
+Create app/api/projects/route.ts — GET: return all projects for session.user.id ordered by updatedAt desc; POST: validate with CreateProjectSchema, create project, return 201 with project
+☐
+P3-009
+⚠ Create app/api/projects/[id]/route.ts — GET: verify project.userId === session.user.id, return project; PATCH: same check + update name/description/color/emoji; DELETE: cascade delete (Prisma handles via onDelete: Cascade)
+  → Always verify project.userId === session.user.id before returning or modifying — horizontal privilege check
+☐
+P3-010
+Create app/api/environments/route.ts — POST: validate, check parent project belongs to user, create environment
+☐
+P3-011
+⚠ Create app/api/environments/[id]/route.ts — GET/PATCH/DELETE with userId ownership check via project join
+☐
+P3-012
+Create app/api/folders/route.ts — GET?envId=: return full folder tree for environment (recursive query or multiple queries assembled in-app); POST: create folder, validate parentId belongs to same environment
+☐
+P3-013
+⚠ Create app/api/folders/[id]/route.ts — GET/PATCH(rename)/DELETE with ownership check via environment→project→userId join
+☐
+P3-014
+Add getFolderTree(environmentId) helper in lib/db.ts — recursively builds the folder tree from flat rows
+☐
+P3-015
+⚠ Create app/api/secrets/route.ts — GET?folderId=&envId=: return secrets for scope (keyName + metadata only, valueEncrypted + iv included — server does not decrypt); POST: validate CreateSecretSchema, verify ownership, save
+  → Server stores and returns valueEncrypted + iv — it never decrypts. Decryption is client-only.
+☐
+P3-016
+Create app/api/secrets/[id]/route.ts — PATCH: validate UpdateSecretSchema, copy current valueEncrypted+iv to SecretHistory, update secret, prune history to latest 5 rows (delete oldest if count > 5); DELETE: hard delete secret + history
+☐
+P3-017
+Create app/api/secrets/[id]/history/route.ts — GET: return last 5 SecretHistory rows for a secret (valueEncrypted + iv + createdAt) with ownership check
+☐
+P3-018
+Create app/api/vault-files/route.ts — GET?folderId=: list files in folder (name, mimeType, createdAt — not content); POST: validate CreateVaultFileSchema, save
+☐
+P3-019
+Create app/api/vault-files/[id]/route.ts — GET: return full file including contentEncrypted + iv; PATCH: update name or contentEncrypted+iv; DELETE: hard delete
+☐
+P3-020
+Create app/(vault)/dashboard/page.tsx — fetch and display project grid. Each card: emoji, name, description, environment count, secret count, color accent. New project button opens CreateProjectModal.
+☐
+P3-021
+Create components/vault/CreateProjectModal.tsx — dialog with name, description, emoji picker (simple grid of 20 emoji), colour picker (8 preset hex values). Validates client-side before POST.
+☐
+P3-022
+Create app/(vault)/projects/[projectId]/page.tsx — display environment tabs (development, staging, production, + any custom). Each tab shows folder tree preview and secret count. Add environment button.
+☐
+P3-023
+Create app/(vault)/projects/[projectId]/[envId]/page.tsx — three-pane layout: FolderTree sidebar (left 240px), secrets table (main, flex-1), detail/editor panel (right 320px, toggleable)
+☐
+P3-024
+Create components/vault/FolderTree.tsx — recursive component. Renders folder nodes with expand/collapse chevron, folder icon, name. Active folder highlighted. Right-click context menu: rename, new subfolder, new file, delete. Props: folders (tree), activeFolderId, onSelect, onCreateFolder, onRename, onDelete
+☐
+P3-025
+Create app/(vault)/projects/[projectId]/[envId]/[folderId]/page.tsx — same three-pane layout, breadcrumb updated with current path
+☐
+P3-026
+Create components/vault/SecretRow.tsx — single table row. Columns: checkbox (bulk select), KEY_NAME, masked value (••••••••), reveal button (eye icon), copy button, edit button, tags chips, history button, delete button
+☐
+P3-027
+⚠ Implement reveal logic in SecretRow: on eye click, fetch nothing (value already loaded as ciphertext), call decryptSecret(valueEncrypted, iv, derivedKey, keyName+':'+envId) from store key, show plaintext for 30 seconds, then re-mask. Show spinner during decrypt.
+☐
+P3-028
+⚠ Implement copy logic in SecretRow: decrypt, copy to clipboard via navigator.clipboard.writeText, start 30s countdown shown as badge on the button, on timeout call navigator.clipboard.writeText('') to clear. Also clear if component unmounts.
+☐
+P3-029
+Implement history dropdown in SecretRow: fetch /api/secrets/[id]/history, show list of timestamps, each with its own reveal button that decrypts that historical value
+☐
+P3-030
+⚠ Create components/vault/SecretEditor.tsx — dialog/panel for add + edit. Fields: KEY_NAME (text, uppercase enforced), VALUE (textarea, shown plaintext while editing). On save: encrypt value with derivedKey + AAD (keyName+':'+envId), POST or PATCH to API. Never send plaintext to server.
+Phase 4 — Import, Export & Sharing
+Import .env, export, share creation, share recipient page, emails
+25 tasks  ·  7 security-critical
+✓
+Task ID
+Task Description  (→ indented lines are implementation notes)
+☐
+P4-001
+Create components/vault/ImportModal.tsx — textarea to paste .env content. Parser: split by newline, skip comments (#...) and blank lines, split each line on first '=' only, trim key and value. Preview parsed entries in a table before confirming.
+☐
+P4-002
+On import confirm: for each parsed entry, encrypt value with derivedKey + AAD, POST to /api/secrets. Show progress bar. Report successes and failures.
+☐
+P4-003
+Handle duplicate key detection on import: if keyName already exists in current scope, offer 'overwrite' vs 'skip' choice per entry
+☐
+P4-004
+Create components/vault/ExportButton.tsx — dropdown with options: Export as .env (current folder), Export environment as .env, Export project as .zip. All decryption happens in browser before download.
+☐
+P4-005
+⚠ Implement .env export: fetch all ciphertext for scope from API, decrypt each value with derivedKey, build KEY=VALUE\n string, trigger browser download via URL.createObjectURL(new Blob([content]))
+  → Never send decrypted content to server — build and download entirely in browser
+☐
+P4-006
+Implement .zip export: use fflate (npm) to build a zip in the browser with per-folder .env files. Folder paths preserved. Download the zip.
+☐
+P4-007
+Create components/vault/FileEditor.tsx — full-screen dialog. Filename field at top. Textarea for decrypted content (fetch contentEncrypted+iv from API, decrypt with derivedKey on open). Save: encrypt new content, PATCH to API. Download button: decrypt, blob download.
+☐
+P4-008
+Show VaultFile entries in the folder tree UI below secrets with a different icon (document icon vs key icon). Clicking opens FileEditor.
+☐
+P4-009
+Create components/vault/ShareModal.tsx — multi-step dialog
+☐
+P4-010
+ShareModal Step 1 — Scope selector: radio buttons for 'Entire project', 'This environment', 'This folder', 'Select specific keys' (checkbox list of key names in current scope)
+☐
+P4-011
+ShareModal Step 2 — Options: recipient email (optional), note (optional), expiry dropdown (1h / 24h / 7d / 30d / never), single-use toggle
+☐
+P4-012
+⚠ ShareModal Step 3 — Passphrase entry: generate a suggested random passphrase (4-word diceware style shown as suggestion), or user types their own. Confirm passphrase field. Warning banner: 'Send this passphrase to the recipient separately — never in the same channel as the link.'
+☐
+P4-013
+⚠ ShareModal Step 4 — Processing: fetch all secrets for selected scope from API, decrypt each with derivedKey, derive shareKey via PBKDF2(passphrase, generateRandomBytes(32), 600000), encrypt bundle with shareKey, POST to /api/share. Show spinner + progress text.
+☐
+P4-014
+ShareModal Step 5 — Success: show 'Share created. Email sent to [recipient].' Display the passphrase prominently one final time with a copy button. Show expiry info.
+☐
+P4-015
+⚠ Create app/api/share/route.ts — POST: authenticate session, validate CreateShareSchema, generate accessToken via crypto.randomBytes(32).toString('base64url'), compute expiresAt from expiresIn enum, save Share to DB, call sendShareEmail(recipientEmail, accessToken, note). Return {shareId, accessToken}.
+☐
+P4-016
+⚠ Create app/api/share/[token]/route.ts — GET: find Share by accessToken. Check isRevoked — return 410 Gone if true. Check expiresAt — return 410 Gone if expired. Log access to ShareAccess (IP from request headers, userAgent). If singleUse=true, set isRevoked=true immediately in same DB transaction. Return {bundleEncrypted, bundleIv, shareSalt, scopeType, note}.
+  → Use a DB transaction for the isRevoked update + ShareAccess insert to ensure atomicity
+  → Return identical 404 for 'token not found' and 'token expired' — do not distinguish
+☐
+P4-017
+⚠ Create app/api/share/revoke/route.ts — POST {shareId}: authenticate, verify share.sharedById === session.user.id, set isRevoked=true
+☐
+P4-018
+Create app/(vault)/share/[token]/page.tsx — public page, no auth required. On load: GET /api/share/[token]. If 404/410: show 'This share link is invalid or has expired.' with no further detail.
+☐
+P4-019
+⚠ Share page happy path: show share metadata (scope type, optional note, expiry). Show passphrase input form. On submit: derive shareKey via PBKDF2(passphrase, shareSalt, 600000), call decryptShareBundle(bundleEncrypted, bundleIv, shareKey). On DecryptionError: show 'Incorrect passphrase. Please try again.' After 5 failures, show 30-second cooldown timer.
+☐
+P4-020
+Share page decrypted view: show KEY=VALUE table (values masked by default with reveal + copy buttons mirroring vault UI). Export as .env button. Clear button that wipes decrypted values from memory.
+☐
+P4-021
+Create lib/email/templates/ShareEmail.tsx — React Email component. Shows: EnVault logo, 'Someone shared secrets with you', share note if present, expiry info, CTA button linking to share URL. Clean minimal design.
+☐
+P4-022
+Create lib/email/templates/VerifyEmail.tsx — React Email component for account email verification / magic link.
+☐
+P4-023
+Create lib/email/send.ts — sendShareEmail(to, token, note?) and sendVerificationEmail(to, url) functions using Resend client. Import templates and render with @react-email/render.
+☐
+P4-024
+Create app/(vault)/settings/shares/page.tsx — table of all active shares created by the user. Columns: scope, recipient email, created, expires, single-use?, access count, revoke button.
+☐
+P4-025
+Create app/api/share/list/route.ts — GET: return all non-revoked shares for session user with accessLog count joined
+Phase 5 — Security Hardening & Polish
+Rate limiting, headers, 2FA, rekey, search, testing, mobile
+38 tasks  ·  19 security-critical
+✓
+Task ID
+Task Description  (→ indented lines are implementation notes)
+☐
+P5-001
+⚠ Create lib/ratelimit.ts — initialise Upstash Ratelimit client. Export: authLimiter (10 req / 15 min per IP), shareLimiter (20 req / hour per IP), saltLimiter (5 req / min per userId)
+☐
+P5-002
+⚠ Apply authLimiter in middleware.ts on /api/auth/* routes — return 429 with Retry-After header on breach
+☐
+P5-003
+⚠ Apply shareLimiter in app/api/share/[token]/route.ts — rate limit by IP extracted from x-forwarded-for header
+☐
+P5-004
+⚠ Apply saltLimiter in app/api/vault/salt/route.ts — rate limit by userId from session
+☐
+P5-005
+⚠ Add security headers to next.config.ts using headers() async function: Content-Security-Policy (script-src 'self', style-src 'self' 'unsafe-inline', no unsafe-eval, no unsafe-inline script), X-Frame-Options DENY, X-Content-Type-Options nosniff, Referrer-Policy no-referrer, Permissions-Policy (camera=(), microphone=(), geolocation=())
+☐
+P5-006
+⚠ Add Strict-Transport-Security header: max-age=63072000; includeSubDomains; preload
+☐
+P5-007
+⚠ Verify NextAuth cookie config: httpOnly: true, secure: true (production), sameSite: 'strict'
+☐
+P5-008
+⚠ Create app/api/vault/rekey/route.ts — POST {newSalt, reencryptedSecrets: [{id, valueEncrypted, iv}]}. Authenticate session. In a single Prisma transaction: update all Secret rows with new ciphertext, update all SecretHistory rows, update all VaultFile rows, update user.vaultSalt to newSalt. Return 200 on success.
+  → Use a DB transaction — if any update fails, none should commit
+☐
+P5-009
+⚠ Create components/vault/ChangeMasterPassword.tsx — form in settings. Requires current password (re-derive key to verify by attempting decryption of a known test value), new password, confirm. On submit: derive new key from new password + new random salt, re-encrypt ALL secrets + files in browser, POST to /api/vault/rekey, update store key.
+☐
+P5-010
+Install otplib: npm i otplib qrcode @types/qrcode
+☐
+P5-011
+Create app/api/auth/totp/setup/route.ts — POST: generate TOTP secret via authenticator.generateSecret(), encrypt it with user's derived key concept (store server-side as user.totpSecret for simplicity), generate otpauth:// URI, return as QR code base64 PNG via qrcode.toDataURL
+☐
+P5-012
+Create app/api/auth/totp/verify/route.ts — POST {token}: check authenticator.verify({token, secret}) — enable 2FA on user if valid
+☐
+P5-013
+Create app/api/auth/totp/disable/route.ts — POST: requires password re-verification, then clears totpSecret and disables 2FA
+☐
+P5-014
+Add TOTP verification step to login flow: after credential check, if user has totpSecret, return a 'totp_required' signal, show 6-digit input page, verify token before creating session
+☐
+P5-015
+Create components/vault/TwoFactorSetup.tsx — settings page section showing QR code, verification input, backup codes (generate 8 single-use codes, store hashed)
+☐
+P5-016
+Create app/api/secrets/search/route.ts — GET?q=: search Secret.keyName ILIKE '%q%' across all projects/environments owned by the user. Return keyName, projectName, environmentName, folderPath. Never search valueEncrypted.
+  → Only search key names — values are encrypted and unsearchable. Make this explicit.
+☐
+P5-017
+Create components/vault/SearchBar.tsx — Command palette (Cmd+K) using shadcn Command component. Debounced input (300ms), hits search API, shows results with project/env/folder breadcrumb. Click navigates to the secret's folder.
+☐
+P5-018
+Create app/(vault)/settings/page.tsx — tabbed settings layout with tabs: Profile, Security, Shares, Danger Zone
+☐
+P5-019
+Settings > Security tab: auto-lock timeout selector (5min, 15min, 30min, never — stored in localStorage), change master password section, 2FA setup section
+☐
+P5-020
+Settings > Danger Zone tab: Delete Account button — requires typing 'delete my account', then calls DELETE /api/account which hard-deletes user + all cascade data
+☐
+P5-021
+Create app/api/account/route.ts — DELETE: authenticate, Prisma User delete (all cascade). Sign out session.
+☐
+P5-022
+Read auto-lock timeout preference from localStorage in useAutoLock hook. Default to 15 minutes if not set.
+☐
+P5-023
+⚠ Add beforeunload event listener in vault layout — calls store.lock() to clear derived key when navigating away from the app
+☐
+P5-024
+Add mousemove and keydown event listeners on the vault layout to call touchActivity() — throttled to at most one call per 10 seconds
+☐
+P5-025
+⚠ Create app/error.tsx — global Next.js error boundary. Log error ID only (no stack trace to client). Show generic 'Something went wrong' with a retry button.
+  → Never expose stack traces, DB errors, or Prisma error messages to the client in production
+☐
+P5-026
+⚠ Create app/not-found.tsx — generic 404 page. Deliberately show no detail about why a route was not found (prevents enumeration of share tokens etc.)
+☐
+P5-027
+⚠ Wrap all API route handlers in try/catch — in production (process.env.NODE_ENV === 'production') return only {error: 'Internal server error'} with no details. In development, include message for debugging.
+☐
+P5-028
+Make the three-pane vault layout responsive: on screens < 768px, use a bottom sheet for the folder tree and hide the detail panel by default. Show a floating action button to open the tree.
+☐
+P5-029
+Add loading skeletons for all data-fetching states: project grid skeleton, folder tree skeleton, secrets table skeleton
+☐
+P5-030
+Add empty states: 'No projects yet — create your first project', 'This folder is empty — add a secret or file', 'No active shares'
+☐
+P5-031
+Add page transitions using Next.js View Transitions API for smoother navigation between vault pages
+☐
+P5-032
+Write integration tests for all critical API routes using Vitest + MSW (mock service worker): secrets CRUD, share creation, share access, vault salt
+☐
+P5-033
+⚠ Perform manual security test: confirm server never returns plaintext by intercepting /api/secrets responses and verifying all value fields are base64 ciphertext
+☐
+P5-034
+⚠ Perform manual privilege test: create two user accounts, verify account A cannot access account B's projects, secrets, shares, or vault salt via any API route
+☐
+P5-035
+⚠ Test share expiry: create a share with 1h expiry, manually update expiresAt in DB to past, verify /api/share/[token] returns 410
+☐
+P5-036
+⚠ Test single-use share: access once — verify isRevoked=true in DB after first access. Confirm second access returns 410.
+☐
+P5-037
+⚠ Test master password rekey: change master password, reload page, unlock with new password, verify all secrets decrypt correctly
+☐
+P5-038
+⚠ Verify clipboard clear: copy a value, wait 31 seconds, check clipboard — should be empty. Also test that clipboard clears when navigating away before 30s.
+Phase 6 — Deployment
+Neon DB, Upstash, Resend, Vercel, smoke testing
+12 tasks  ·  3 security-critical
+✓
+Task ID
+Task Description  (→ indented lines are implementation notes)
+☐
+P6-001
+Create a Neon serverless PostgreSQL database at neon.tech. Copy the connection string (postgres://...). Ensure SSL mode is required.
+☐
+P6-002
+Create an Upstash Redis database at upstash.com. Copy REST_URL and REST_TOKEN.
+☐
+P6-003
+Create a Resend account at resend.com. Add and verify the sending domain via DNS TXT record. Create an API key with Send access only.
+☐
+P6-004
+⚠ Push project to GitHub repository (ensure .env.local is in .gitignore and NOT committed)
+☐
+P6-005
+Import GitHub repository to Vercel. Set framework preset to Next.js.
+☐
+P6-006
+⚠ Add all environment variables to Vercel project settings: DATABASE_URL, NEXTAUTH_SECRET (new random 32+ char string for prod), NEXTAUTH_URL (https://yourdomain.com), RESEND_API_KEY, RESEND_FROM, UPSTASH_REDIS_REST_URL, UPSTASH_REDIS_REST_TOKEN, NEXT_PUBLIC_APP_URL, SHARE_LINK_BASE
+☐
+P6-007
+Run production migration: vercel env pull .env.local && npx prisma migrate deploy
+☐
+P6-008
+Deploy to Vercel. Verify deployment succeeds with zero build errors.
+☐
+P6-009
+⚠ Verify HTTPS is active on production domain. Check HSTS header is present in response.
+☐
+P6-010
+Smoke test production: register account, set up vault, add project, add folder, add secret, reveal secret, share to a test email, open share link, enter passphrase, verify decrypted values are correct.
+☐
+P6-011
+Set up Vercel deployment protection: add a preview deployment password for non-main branches
+☐
+P6-012
+Configure automatic database backups on Neon (daily snapshots, 7-day retention)
+Appendix — Security-Critical Tasks Master List
+All tasks marked as security-critical across all phases, consolidated for final audit review.
+✓
+Task ID
+Task Description  (→ indented lines are implementation notes)
+☐
+P1-005
+⚠ Create .env.local with all required keys (DATABASE_URL, NEXTAUTH_SECRET, NEXTAUTH_URL, RESEND_API_KEY, RESEND_FROM, UPSTASH_REDIS_REST_URL, UPSTASH_REDIS_REST_TOKEN, NEXT_PUBLIC_APP_URL, SHARE_LINK_BASE)
+☐
+P1-006
+⚠ Create .env.example with all keys present but values blanked — commit this, never .env.local
+☐
+P1-007
+⚠ Add .env.local to .gitignore — verify it is listed before first commit
+☐
+P1-016
+⚠ Add Secret model — id, keyName (String — plaintext), valueEncrypted (String — base64 AES-GCM ciphertext), iv (String — base64 12-byte IV), tags (String[]), environmentId FK→Environment (cascade), folderId? FK→Folder; @@unique([environmentId, folderId, keyName]); createdAt, updatedAt
+☐
+P1-019
+⚠ Add Share model — id, projectId? FK→Project, scopeType (String: project|environment|folder|keys), scopeId, bundleEncrypted (base64), bundleIv, shareSalt (base64 32 bytes), accessToken (String unique), expiresAt (DateTime?), singleUse (Boolean default false), isRevoked (Boolean default false), sharedById FK→User (named SharedBy), recipientEmail?, note?, createdAt
+☐
+P1-025
+⚠ Add Credentials provider to auth config — accepts email + password, queries DB, runs bcrypt.compare, returns user or null. Never return password hash.
+☐
+P1-027
+⚠ Configure JWT callbacks: include user.id in the token on signIn, expose it as session.user.id in session callback
+☐
+P1-029
+⚠ Create middleware.ts — protect all /dashboard and /projects routes, redirect unauthenticated to /login
+☐
+P2-001
+⚠ Create lib/crypto/utils.ts — toBase64(buffer): string, fromBase64(str): Uint8Array, generateRandomBytes(n): Uint8Array using crypto.getRandomValues
+☐
+P2-002
+⚠ Create lib/crypto/vault.ts — export deriveVaultKey(masterPassword: string, saltBase64: string, iterations = 600_000): Promise<CryptoKey>
+  → Use crypto.subtle.importKey with algorithm PBKDF2 and usages ['deriveKey']
+  → Use crypto.subtle.deriveKey with {name:'PBKDF2', salt, iterations, hash:'SHA-256'} → {name:'AES-GCM', length:256}
+  → Set extractable: false — key must never be extractable from memory as raw bytes
+☐
+P2-003
+⚠ Create lib/crypto/encrypt.ts — export encryptSecret(plaintext: string, key: CryptoKey, aad?: string): Promise<{valueEncrypted: string, iv: string}>
+  → Generate fresh 12-byte IV with crypto.getRandomValues every call — never reuse IV
+  → Set additionalData to new TextEncoder().encode(aad) when aad is provided
+  → tagLength must be 128
+  → Return base64-encoded ciphertext and base64-encoded IV
+☐
+P2-004
+⚠ Create lib/crypto/decrypt.ts — export decryptSecret(valueEncrypted: string, iv: string, key: CryptoKey, aad?: string): Promise<string>
+  → On AES-GCM auth tag failure, throw a typed error: class DecryptionError extends Error
+  → Never log plaintext in catch blocks
+  → Return decoded UTF-8 string
+☐
+P2-005
+⚠ Create lib/crypto/share.ts — export encryptShareBundle(secrets: {keyName,plaintext}[], shareKey: CryptoKey): Promise<{bundleEncrypted: string, bundleIv: string}>
+  → Serialise the array to JSON, encrypt as a single blob with the share key
+  → Return base64 bundleEncrypted + base64 bundleIv
+☐
+P2-006
+⚠ Add decryptShareBundle(bundleEncrypted: string, bundleIv: string, shareKey: CryptoKey) to lib/crypto/share.ts
+  → Parse JSON after decryption — return typed array {keyName: string, value: string}[]
+☐
+P2-007
+⚠ Write unit tests for all crypto functions using Node's built-in test runner (node:test)
+  → Test round-trip: encrypt then decrypt returns original string
+  → Test wrong key → DecryptionError thrown
+  → Test wrong AAD → DecryptionError thrown
+  → Test IV is never reused across two calls
+☐
+P2-008
+⚠ Create lib/store/vaultStore.ts — Zustand store with fields: derivedKey (CryptoKey|null), isUnlocked (boolean), lastActivity (number, unix ms)
+☐
+P2-010
+⚠ Add lock() action: set derivedKey=null, isUnlocked=false
+  → This is the ONLY place the key reference is cleared — ensure no other component holds a copy
+☐
+P2-012
+⚠ Create useAutoLock(timeoutMs) hook in lib/store/vaultStore.ts — setInterval every 30s checks Date.now()-lastActivity > timeoutMs, calls lock() if true. Clears interval on unmount.
+☐
+P2-013
+⚠ Add window.addEventListener('visibilitychange') in the vault layout to call lock() when document becomes hidden (tab switch / phone lock)
+☐
+P2-014
+⚠ Create app/api/vault/salt/route.ts — GET handler. Authenticate session. If user.vaultSalt is null, generate 32 random bytes via crypto.randomBytes (server-side Node), save to DB as base64, return it. Otherwise return existing salt.
+  → This is the only salt-generation endpoint — call it once on first vault setup
+☐
+P2-018
+⚠ Create app/api/auth/register/route.ts — POST handler. Zod validate body. Check email not already registered. Hash password with bcrypt (saltRounds=12). Create User in DB. Return 201.
+  → Use bcrypt saltRounds=12 — not less. saltRounds=10 is too fast for a vault app.
+☐
+P2-020
+⚠ Create app/(vault)/layout.tsx — wraps all vault pages. On mount: check isUnlocked from store. If false, render VaultUnlock modal overlay (fullscreen, non-dismissible). After unlock, render children. Call useAutoLock here.
+☐
+P2-021
+⚠ Create components/vault/VaultUnlock.tsx — full-screen modal overlay. Password input (type=password). On submit: fetch /api/vault/salt, run deriveVaultKey, call store.unlock(key). Show spinner during PBKDF2 (600k iterations ~1-2s). Show generic 'Unable to unlock' on wrong password with no iteration count hint.
+  → Do not reveal attempt counts or lockout thresholds in the UI
+  → Use a loading state during key derivation — PBKDF2 at 600k rounds blocks the UI thread, so run it in a short setTimeout(0) to allow the spinner to render first
+☐
+P3-009
+⚠ Create app/api/projects/[id]/route.ts — GET: verify project.userId === session.user.id, return project; PATCH: same check + update name/description/color/emoji; DELETE: cascade delete (Prisma handles via onDelete: Cascade)
+  → Always verify project.userId === session.user.id before returning or modifying — horizontal privilege check
+☐
+P3-011
+⚠ Create app/api/environments/[id]/route.ts — GET/PATCH/DELETE with userId ownership check via project join
+☐
+P3-013
+⚠ Create app/api/folders/[id]/route.ts — GET/PATCH(rename)/DELETE with ownership check via environment→project→userId join
+☐
+P3-015
+⚠ Create app/api/secrets/route.ts — GET?folderId=&envId=: return secrets for scope (keyName + metadata only, valueEncrypted + iv included — server does not decrypt); POST: validate CreateSecretSchema, verify ownership, save
+  → Server stores and returns valueEncrypted + iv — it never decrypts. Decryption is client-only.
+☐
+P3-027
+⚠ Implement reveal logic in SecretRow: on eye click, fetch nothing (value already loaded as ciphertext), call decryptSecret(valueEncrypted, iv, derivedKey, keyName+':'+envId) from store key, show plaintext for 30 seconds, then re-mask. Show spinner during decrypt.
+☐
+P3-028
+⚠ Implement copy logic in SecretRow: decrypt, copy to clipboard via navigator.clipboard.writeText, start 30s countdown shown as badge on the button, on timeout call navigator.clipboard.writeText('') to clear. Also clear if component unmounts.
+☐
+P3-030
+⚠ Create components/vault/SecretEditor.tsx — dialog/panel for add + edit. Fields: KEY_NAME (text, uppercase enforced), VALUE (textarea, shown plaintext while editing). On save: encrypt value with derivedKey + AAD (keyName+':'+envId), POST or PATCH to API. Never send plaintext to server.
+☐
+P4-005
+⚠ Implement .env export: fetch all ciphertext for scope from API, decrypt each value with derivedKey, build KEY=VALUE\n string, trigger browser download via URL.createObjectURL(new Blob([content]))
+  → Never send decrypted content to server — build and download entirely in browser
+☐
+P4-012
+⚠ ShareModal Step 3 — Passphrase entry: generate a suggested random passphrase (4-word diceware style shown as suggestion), or user types their own. Confirm passphrase field. Warning banner: 'Send this passphrase to the recipient separately — never in the same channel as the link.'
+☐
+P4-013
+⚠ ShareModal Step 4 — Processing: fetch all secrets for selected scope from API, decrypt each with derivedKey, derive shareKey via PBKDF2(passphrase, generateRandomBytes(32), 600000), encrypt bundle with shareKey, POST to /api/share. Show spinner + progress text.
+☐
+P4-015
+⚠ Create app/api/share/route.ts — POST: authenticate session, validate CreateShareSchema, generate accessToken via crypto.randomBytes(32).toString('base64url'), compute expiresAt from expiresIn enum, save Share to DB, call sendShareEmail(recipientEmail, accessToken, note). Return {shareId, accessToken}.
+☐
+P4-016
+⚠ Create app/api/share/[token]/route.ts — GET: find Share by accessToken. Check isRevoked — return 410 Gone if true. Check expiresAt — return 410 Gone if expired. Log access to ShareAccess (IP from request headers, userAgent). If singleUse=true, set isRevoked=true immediately in same DB transaction. Return {bundleEncrypted, bundleIv, shareSalt, scopeType, note}.
+  → Use a DB transaction for the isRevoked update + ShareAccess insert to ensure atomicity
+  → Return identical 404 for 'token not found' and 'token expired' — do not distinguish
+☐
+P4-017
+⚠ Create app/api/share/revoke/route.ts — POST {shareId}: authenticate, verify share.sharedById === session.user.id, set isRevoked=true
+☐
+P4-019
+⚠ Share page happy path: show share metadata (scope type, optional note, expiry). Show passphrase input form. On submit: derive shareKey via PBKDF2(passphrase, shareSalt, 600000), call decryptShareBundle(bundleEncrypted, bundleIv, shareKey). On DecryptionError: show 'Incorrect passphrase. Please try again.' After 5 failures, show 30-second cooldown timer.
+☐
+P5-001
+⚠ Create lib/ratelimit.ts — initialise Upstash Ratelimit client. Export: authLimiter (10 req / 15 min per IP), shareLimiter (20 req / hour per IP), saltLimiter (5 req / min per userId)
+☐
+P5-002
+⚠ Apply authLimiter in middleware.ts on /api/auth/* routes — return 429 with Retry-After header on breach
+☐
+P5-003
+⚠ Apply shareLimiter in app/api/share/[token]/route.ts — rate limit by IP extracted from x-forwarded-for header
+☐
+P5-004
+⚠ Apply saltLimiter in app/api/vault/salt/route.ts — rate limit by userId from session
+☐
+P5-005
+⚠ Add security headers to next.config.ts using headers() async function: Content-Security-Policy (script-src 'self', style-src 'self' 'unsafe-inline', no unsafe-eval, no unsafe-inline script), X-Frame-Options DENY, X-Content-Type-Options nosniff, Referrer-Policy no-referrer, Permissions-Policy (camera=(), microphone=(), geolocation=())
+☐
+P5-006
+⚠ Add Strict-Transport-Security header: max-age=63072000; includeSubDomains; preload
+☐
+P5-007
+⚠ Verify NextAuth cookie config: httpOnly: true, secure: true (production), sameSite: 'strict'
+☐
+P5-008
+⚠ Create app/api/vault/rekey/route.ts — POST {newSalt, reencryptedSecrets: [{id, valueEncrypted, iv}]}. Authenticate session. In a single Prisma transaction: update all Secret rows with new ciphertext, update all SecretHistory rows, update all VaultFile rows, update user.vaultSalt to newSalt. Return 200 on success.
+  → Use a DB transaction — if any update fails, none should commit
+☐
+P5-009
+⚠ Create components/vault/ChangeMasterPassword.tsx — form in settings. Requires current password (re-derive key to verify by attempting decryption of a known test value), new password, confirm. On submit: derive new key from new password + new random salt, re-encrypt ALL secrets + files in browser, POST to /api/vault/rekey, update store key.
+☐
+P5-023
+⚠ Add beforeunload event listener in vault layout — calls store.lock() to clear derived key when navigating away from the app
+☐
+P5-025
+⚠ Create app/error.tsx — global Next.js error boundary. Log error ID only (no stack trace to client). Show generic 'Something went wrong' with a retry button.
+  → Never expose stack traces, DB errors, or Prisma error messages to the client in production
+☐
+P5-026
+⚠ Create app/not-found.tsx — generic 404 page. Deliberately show no detail about why a route was not found (prevents enumeration of share tokens etc.)
+☐
+P5-027
+⚠ Wrap all API route handlers in try/catch — in production (process.env.NODE_ENV === 'production') return only {error: 'Internal server error'} with no details. In development, include message for debugging.
+☐
+P5-033
+⚠ Perform manual security test: confirm server never returns plaintext by intercepting /api/secrets responses and verifying all value fields are base64 ciphertext
+☐
+P5-034
+⚠ Perform manual privilege test: create two user accounts, verify account A cannot access account B's projects, secrets, shares, or vault salt via any API route
+☐
+P5-035
+⚠ Test share expiry: create a share with 1h expiry, manually update expiresAt in DB to past, verify /api/share/[token] returns 410
+☐
+P5-036
+⚠ Test single-use share: access once — verify isRevoked=true in DB after first access. Confirm second access returns 410.
+☐
+P5-037
+⚠ Test master password rekey: change master password, reload page, unlock with new password, verify all secrets decrypt correctly
+☐
+P5-038
+⚠ Verify clipboard clear: copy a value, wait 31 seconds, check clipboard — should be empty. Also test that clipboard clears when navigating away before 30s.
+☐
+P6-004
+⚠ Push project to GitHub repository (ensure .env.local is in .gitignore and NOT committed)
+☐
+P6-006
+⚠ Add all environment variables to Vercel project settings: DATABASE_URL, NEXTAUTH_SECRET (new random 32+ char string for prod), NEXTAUTH_URL (https://yourdomain.com), RESEND_API_KEY, RESEND_FROM, UPSTASH_REDIS_REST_URL, UPSTASH_REDIS_REST_TOKEN, NEXT_PUBLIC_APP_URL, SHARE_LINK_BASE
+☐
+P6-009
+⚠ Verify HTTPS is active on production domain. Check HSTS header is present in response.
+
+EnVault — built with security as the only compromise-free requirement

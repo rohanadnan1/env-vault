@@ -1,0 +1,796 @@
+🔐
+EnVault
+Secure Environment Variable Vault
+Zero-knowledge · AES-256-GCM · Next.js · Vercel-ready
+Next.js 14
+
+AES-256-GCM
+
+PostgreSQL
+
+Prisma ORM
+
+Vercel Ready
+
+Table of Contents
+1.  Project Overview  —  What EnVault is and why it exists
+2.  Security Architecture  —  Zero-knowledge design, encryption model, threat model
+3.  Feature Specification  —  Complete list of all features with detailed behavior
+4.  Technical Stack  —  Every dependency, why it was chosen
+5.  Database Schema  —  Full Prisma schema with explanations
+6.  Project Structure  —  Complete folder/file layout
+7.  API Routes  —  All Next.js API endpoints with payloads
+8.  Cryptography Implementation  —  Exact crypto primitives and code patterns
+9.  Share & Access System  —  How secure sharing and vault unlocking works
+10.  UI/UX Specification  —  Every screen, component, and interaction
+11.  Environment Variables  —  Required .env variables for deployment
+12.  Deployment Guide  —  Step-by-step Vercel deployment
+13.  Implementation Phases  —  Sprint-by-sprint build plan
+14.  Security Checklist  —  Pre-launch security audit items
+
+1. Project Overview
+EnVault is a self-hosted, zero-knowledge environment variable manager built as a Next.js application deployable to Vercel with a PostgreSQL backend. It solves the problem of securely storing, organizing, and sharing .env secrets across projects, machines, and team members — without trusting any server with plaintext values.
+The golden rule: the server stores only ciphertext. Decryption happens exclusively in the browser. Even a full database breach reveals nothing without the user's master password.
+Core Problems It Solves
+	•	Env vars get lost when switching machines or reinstalling OS
+	•	Sharing secrets with team members currently means plaintext Slack/email/WhatsApp
+	•	No way to version or organize env vars by project and environment
+	•	.gitignore files, API keys, private instructions — all need a secure home
+	•	Accessing secrets from a new device requires complete manual re-entry
+What Makes It Different
+	•	Zero-knowledge architecture — no master password ever leaves the device, not even hashed
+	•	Folder-within-folder organization — mirrors real project structures (ai/, frontend/, backend/)
+	•	Two-layer access — account login + vault master password required before any secret is visible
+	•	Secure share links — time-limited, one-time tokens with recipient-side decryption
+	•	Generic file vault — store any text file: instructions, notes, keys, anything in .gitignore
+	•	100% Next.js — no separate backend, no microservices, one Vercel deployment
+
+2. Security Architecture
+2.1 Zero-Knowledge Model
+EnVault follows a strict zero-knowledge design pattern. The server (Next.js API routes + PostgreSQL) never has access to plaintext secret values at any point. The only data the server stores about secrets is their AES-256-GCM ciphertext, IV, salt, and metadata (key name, project association, timestamps).
+What the server sees vs what it never sees
+SEES: encrypted blob (ciphertext), IV, salt, key names (metadata only), timestamps, share tokens
+NEVER SEES: plaintext values, master password, derived encryption key, decrypted content
+NEVER SEES: share passphrase, recipient's decryption key, any data in transit after TLS
+2.2 Encryption Model
+Master Password → Encryption Key (PBKDF2)
+The user's master password is never stored. Instead it is used as input to PBKDF2 (Password-Based Key Derivation Function 2) to derive a 256-bit AES key in the browser using the Web Crypto API. This process uses:
+	•	Algorithm: PBKDF2 with SHA-256
+	•	Iterations: 600,000 rounds (OWASP 2024 recommendation)
+	•	Salt: 32 bytes of cryptographically secure random data (stored per-vault in DB)
+	•	Output: 256-bit key used directly for AES-256-GCM operations
+Encryption: AES-256-GCM
+Each secret value is encrypted individually using AES-256-GCM. GCM (Galois/Counter Mode) provides both confidentiality and authentication — meaning any tampering with the ciphertext is detected and decryption fails. Each encryption operation uses:
+	•	A fresh, random 12-byte IV (initialization vector) — never reused
+	•	The derived key from PBKDF2
+	•	AAD (Additional Authenticated Data) set to the key name + project ID for binding
+// Browser-side encryption (simplified)
+async function encryptValue(plaintext, derivedKey, keyName, projectId) {
+  const iv = crypto.getRandomValues(new Uint8Array(12));
+  const encoded = new TextEncoder().encode(plaintext);
+  const aad = new TextEncoder().encode(`${keyName}:${projectId}`);
+  const ciphertext = await crypto.subtle.encrypt(
+    { name: 'AES-GCM', iv, additionalData: aad, tagLength: 128 },
+    derivedKey,
+    encoded
+  );
+  return { ciphertext: toBase64(ciphertext), iv: toBase64(iv) };
+}
+2.3 Two-Layer Access Control
+Getting into the vault requires passing TWO independent security gates:
+Layer
+Mechanism
+Blocks
+Managed by
+Layer 1
+Account auth (NextAuth + JWT)
+Anyone without an account
+NextAuth session cookie
+Layer 2
+Vault master password (PBKDF2)
+Logged-in users without the master password
+Web Crypto API (browser only)
+Share gate
+Share passphrase + expiry token
+Recipients without the passphrase
+Time-limited DB token + browser decryption
+Layer 2 (vault unlock) is enforced on every page load and after configurable inactivity timeout (default 15 minutes). When a session expires or the user navigates away, the derived key is cleared from memory. The master password must be re-entered to re-derive the key.
+2.4 Share Security Model
+When sharing a vault folder or project with someone:
+	•	A new random 32-byte share salt is generated in the browser
+	•	You enter a share passphrase (which you communicate to the recipient separately — out-of-band)
+	•	PBKDF2 derives a new share key from the passphrase + share salt
+	•	The selected secrets are re-encrypted with the share key and stored as a share bundle in the DB
+	•	A time-limited, cryptographically random access token is generated and emailed as a link
+	•	Recipient clicks the link → enters the share passphrase → browser decrypts the bundle locally
+Share security properties
+The share token in the email grants access to the encrypted blob only
+Without the passphrase (communicated separately), the blob is useless
+Tokens expire (configurable: 24h, 72h, 7d, or single-use)
+After access, single-use tokens are deleted immediately
+The server never knows the share passphrase — it only verifies the token
+Shares are scoped: you can share a single folder, a project, or specific keys
+2.5 Threat Model
+Threat
+Scenario
+Mitigation
+Database breach
+Attacker dumps entire PostgreSQL DB
+Only ciphertext stored — useless without master password
+Server compromise
+Next.js server is fully compromised
+Server never holds decrypted values or keys
+Intercepted share email
+Attacker intercepts the share link email
+Link alone is worthless without the share passphrase
+Expired tokens
+Old share link reused
+Tokens have TTL + single-use option
+Brute force master password
+Attacker has ciphertext, tries passwords
+600k PBKDF2 rounds makes brute force extremely slow
+Session hijack
+Attacker steals session cookie
+Vault stays locked — master password still required
+XSS attack
+Script injected into vault UI
+CSP headers, no eval, HttpOnly cookies, input sanitization
+MITM attack
+Traffic intercepted in transit
+HTTPS enforced via Vercel + HSTS headers
+
+3. Feature Specification
+3.1 Authentication
+	•	Email/password sign-up with email verification (via NextAuth Credentials + Resend)
+	•	Magic link login option (email OTP — no password needed for account)
+	•	JWT session tokens, HttpOnly cookies, CSRF protection via NextAuth
+	•	Account-level 2FA is optional but recommended (TOTP via authenticator app)
+3.2 Vault Unlock
+	•	Separate from account login — vault requires master password on every new session
+	•	Auto-lock after configurable inactivity timeout (5 min, 15 min, 30 min, never)
+	•	Lock button always visible in the navbar to manually clear the derived key from memory
+	•	Wrong password attempts are rate-limited client-side (exponential backoff)
+	•	Master password change: re-encrypts all existing secrets with the new derived key
+3.3 Project Management
+	•	Create unlimited projects with name, description, color tag, and emoji icon
+	•	Projects are the top-level organizational unit (e.g., learn-bridge-ai, my-api)
+	•	Each project can contain environments: development, staging, production, custom
+	•	Project-level stats: number of secrets, last modified, environments count
+3.4 Folder/File Structure
+EnVault supports a full recursive folder hierarchy inside each project + environment. This mirrors a real filesystem:
+learn-bridge-ai/
+├── production/
+│   ├── ai/
+│   │   ├── OPENAI_API_KEY
+│   │   ├── ANTHROPIC_KEY
+│   │   └── notes.txt           ← plain text file
+│   ├── frontend/
+│   │   ├── NEXT_PUBLIC_API_URL
+│   │   └── NEXTAUTH_SECRET
+│   └── backend/
+│       ├── DATABASE_URL
+│       ├── JWT_SECRET
+│       └── deployment-notes.md ← gitignored instructions
+└── development/
+    └── ai/
+        └── OPENAI_API_KEY      ← different value for dev
+	•	Folders can be nested infinitely deep
+	•	Each folder can contain: env variables (KEY=VALUE pairs) and text files (arbitrary content)
+	•	Text files are first-class — perfect for .gitignore instructions, deployment notes, API docs, etc.
+	•	Drag-and-drop to reorganize items within the folder tree (planned Phase 2)
+	•	Folder-level operations: rename, move, delete (cascades), share, export
+3.5 Secret Management
+	•	Add variable: KEY name (plaintext, visible) + VALUE (encrypted, hidden by default)
+	•	Values are hidden with •••••• mask — click the eye icon to reveal (decrypts in browser)
+	•	Inline editing with auto-save — no separate save button needed
+	•	Value history: last 5 versions of each secret are kept (all encrypted), with timestamps
+	•	Bulk import: paste a .env file → parsed and encrypted entry-by-entry
+	•	Export .env: decrypts all values in browser → downloads a .env file locally
+	•	Copy to clipboard: copies decrypted value, clipboard cleared after 30 seconds
+	•	Search: search by key name across all projects (values are never searched — encrypted)
+	•	Tags/labels: add custom tags to secrets for filtering (e.g., 'database', 'third-party')
+3.6 Text File Vault
+	•	Store any text content as a named file inside any folder
+	•	Encrypted and stored identically to env variables — zero-knowledge model applies
+	•	Full-screen editor to read and edit encrypted text files
+	•	Use cases: deployment instructions, private API documentation, .gitignore'd README sections, private notes
+	•	Download as .txt, .md, or .json
+3.7 Secure Sharing
+	•	Share any scope: a single key, a folder, a full environment, or an entire project
+	•	Generates an encrypted share bundle + time-limited access token
+	•	Token delivery: email sent via Resend with the share link
+	•	Passphrase delivery: communicated out-of-band by the sharer (Slack, call, etc.)
+	•	Expiry options: 1 hour, 24 hours, 7 days, 30 days, single-use, never
+	•	Recipient UX: opens link → enters passphrase → sees decrypted values → can copy or download .env
+	•	Recipient does NOT need an EnVault account
+	•	Share management: view all active shares, revoke any share instantly
+	•	Share audit log: who accessed a share, when, from what IP
+3.8 Import / Export
+	•	Import: paste .env content → parsed, individual keys confirmed, then encrypted
+	•	Import from .json (key-value format)
+	•	Export: download full project as .env, .json, or a zip of per-folder .env files
+	•	Export is always a browser-side operation — decrypted locally, never via server
+
+4. Technical Stack
+Category
+Technology
+Reason
+Framework
+Next.js 14 (App Router)
+API routes + SSR + client components in one project, Vercel-native
+Language
+TypeScript
+Type safety for crypto operations, API payloads, and DB models
+Database
+PostgreSQL (Neon / Supabase)
+Serverless Postgres compatible with Vercel; supports Prisma
+ORM
+Prisma
+Type-safe DB access, migration tooling, schema-as-code
+Auth
+NextAuth.js v5
+Battle-tested, session management, JWT, supports credentials + magic link
+Encryption
+Web Crypto API (native browser)
+No dependencies, runs entirely client-side, AES-GCM + PBKDF2 built-in
+Email
+Resend + React Email
+Reliable transactional email, beautiful templates, Next.js-friendly
+UI
+Tailwind CSS + shadcn/ui
+Utility-first, accessible components, no extra JS overhead
+State
+Zustand
+Lightweight client state for vault unlock status + derived key storage
+Validation
+Zod
+Schema validation for all API inputs and form data
+Rate Limiting
+Upstash Redis (via @upstash/ratelimit)
+Serverless-compatible rate limiting for auth + share endpoints
+Deployment
+Vercel
+Zero-config Next.js hosting, edge functions, automatic HTTPS
+
+5. Database Schema
+Full Prisma schema. All fields named *Encrypted contain AES-256-GCM ciphertext encoded as base64. Fields named *Iv contain the corresponding 12-byte IV as base64. The server stores no plaintext secret values anywhere.
+// prisma/schema.prisma
+ 
+generator client {
+  provider = "prisma-client-js"
+}
+ 
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+ 
+model User {
+  id            String    @id @default(cuid())
+  email         String    @unique
+  name          String?
+  image         String?
+  createdAt     DateTime  @default(now())
+  updatedAt     DateTime  @updatedAt
+  // Vault-specific: per-user salt for PBKDF2 key derivation
+  vaultSalt     String?   // 32 bytes base64 — generated on first vault setup
+  vaultKdfIter  Int       @default(600000) // PBKDF2 iterations
+  totpSecret    String?   // TOTP 2FA secret (encrypted)
+  lastVaultAt   DateTime? // last time vault was unlocked
+ 
+  sessions      Session[]
+  accounts      Account[]
+  projects      Project[]
+  shares        Share[]   @relation("SharedBy")
+  shareAccess   ShareAccess[]
+}
+ 
+model Project {
+  id          String    @id @default(cuid())
+  name        String
+  description String?
+  color       String    @default("#6366F1")
+  emoji       String    @default("📁")
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
+  userId      String
+  user        User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+ 
+  environments Environment[]
+  shares       Share[]
+}
+ 
+model Environment {
+  id        String   @id @default(cuid())
+  name      String   // 'development' | 'staging' | 'production' | custom
+  projectId String
+  project   Project  @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  createdAt DateTime @default(now())
+ 
+  folders   Folder[]
+  secrets   Secret[]
+ 
+  @@unique([projectId, name])
+}
+ 
+model Folder {
+  id            String   @id @default(cuid())
+  name          String
+  environmentId String
+  environment   Environment @relation(fields: [environmentId], references: [id], onDelete: Cascade)
+  parentId      String?  // null = root folder
+  parent        Folder?  @relation("FolderTree", fields: [parentId], references: [id])
+  children      Folder[] @relation("FolderTree")
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+ 
+  secrets       Secret[]
+  vaultFiles    VaultFile[]
+}
+ 
+model Secret {
+  id            String   @id @default(cuid())
+  keyName       String   // plaintext — only the name is stored unencrypted
+  valueEncrypted String  // AES-256-GCM ciphertext (base64)
+  iv            String   // 12-byte IV (base64)
+  tags          String[] // ['database', 'third-party'] etc.
+  environmentId String
+  environment   Environment @relation(fields: [environmentId], references: [id], onDelete: Cascade)
+  folderId      String?
+  folder        Folder?  @relation(fields: [folderId], references: [id])
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+ 
+  history       SecretHistory[]
+ 
+  @@unique([environmentId, folderId, keyName])
+}
+ 
+model SecretHistory {
+  id            String   @id @default(cuid())
+  secretId      String
+  secret        Secret   @relation(fields: [secretId], references: [id], onDelete: Cascade)
+  valueEncrypted String
+  iv            String
+  createdAt     DateTime @default(now())
+  // Retain last 5 versions only — enforced in application logic
+}
+ 
+model VaultFile {
+  id             String  @id @default(cuid())
+  name           String  // filename e.g. 'deployment-notes.md'
+  contentEncrypted String // full file content, encrypted
+  iv             String
+  mimeType       String  @default("text/plain")
+  folderId       String
+  folder         Folder  @relation(fields: [folderId], references: [id], onDelete: Cascade)
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
+}
+ 
+model Share {
+  id             String    @id @default(cuid())
+  // What is being shared
+  projectId      String?
+  project        Project?  @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  scopeType      String    // 'project' | 'environment' | 'folder' | 'keys'
+  scopeId        String    // ID of the shared scope
+  // Encrypted bundle (re-encrypted with share key)
+  bundleEncrypted String   // JSON array of {keyName, valueEncrypted, iv} — base64
+  bundleIv       String
+  shareSalt      String    // 32 bytes base64 — for recipient's PBKDF2
+  // Access control
+  accessToken    String    @unique // cryptographically random, URL-safe
+  expiresAt      DateTime?
+  singleUse      Boolean   @default(false)
+  isRevoked      Boolean   @default(false)
+  // Metadata
+  sharedById     String
+  sharedBy       User      @relation("SharedBy", fields: [sharedById], references: [id])
+  recipientEmail String?
+  note           String?
+  createdAt      DateTime  @default(now())
+ 
+  accessLog      ShareAccess[]
+}
+ 
+model ShareAccess {
+  id        String   @id @default(cuid())
+  shareId   String
+  share     Share    @relation(fields: [shareId], references: [id], onDelete: Cascade)
+  userId    String?
+  user      User?    @relation(fields: [userId], references: [id])
+  ipAddress String?
+  userAgent String?
+  accessedAt DateTime @default(now())
+}
+ 
+// NextAuth required models
+model Account { ... }  // standard NextAuth Account model
+model Session { ... }  // standard NextAuth Session model
+model VerificationToken { ... }
+
+6. Project Structure
+envault/
+├── app/                          # Next.js 14 App Router
+│   ├── (auth)/                   # Auth route group
+│   │   ├── login/page.tsx
+│   │   ├── register/page.tsx
+│   │   └── verify/page.tsx
+│   ├── (vault)/                  # Protected vault route group
+│   │   ├── layout.tsx            # Vault layout — checks session + vault unlock
+│   │   ├── dashboard/page.tsx    # Projects list
+│   │   ├── projects/
+│   │   │   ├── [projectId]/
+│   │   │   │   ├── page.tsx      # Project overview (environments)
+│   │   │   │   └── [envId]/
+│   │   │   │       ├── page.tsx  # Environment root (folder tree + secrets)
+│   │   │   │       └── [folderId]/page.tsx
+│   │   ├── share/[token]/page.tsx # Share recipient page
+│   │   └── settings/page.tsx
+│   ├── api/                      # API routes (server-side only)
+│   │   ├── auth/[...nextauth]/route.ts
+│   │   ├── projects/
+│   │   │   ├── route.ts          # GET (list), POST (create)
+│   │   │   └── [id]/route.ts     # GET, PATCH, DELETE
+│   │   ├── environments/
+│   │   │   ├── route.ts
+│   │   │   └── [id]/route.ts
+│   │   ├── folders/
+│   │   │   ├── route.ts
+│   │   │   └── [id]/route.ts
+│   │   ├── secrets/
+│   │   │   ├── route.ts          # GET (by folder), POST (create)
+│   │   │   └── [id]/route.ts     # PATCH, DELETE, GET history
+│   │   ├── vault-files/
+│   │   │   ├── route.ts
+│   │   │   └── [id]/route.ts
+│   │   ├── share/
+│   │   │   ├── route.ts          # POST (create share)
+│   │   │   ├── [token]/route.ts  # GET (validate + return bundle)
+│   │   │   └── revoke/route.ts   # POST (revoke)
+│   │   └── vault/
+│   │       └── salt/route.ts     # GET user's PBKDF2 salt
+│   ├── layout.tsx
+│   └── page.tsx                  # Landing / redirect
+├── components/
+│   ├── vault/
+│   │   ├── VaultUnlock.tsx       # Master password entry modal
+│   │   ├── SecretRow.tsx         # Single KEY=VALUE row
+│   │   ├── FolderTree.tsx        # Recursive folder navigator
+│   │   ├── SecretEditor.tsx      # Add/edit secret modal
+│   │   ├── FileEditor.tsx        # Text file viewer/editor
+│   │   ├── ShareModal.tsx        # Share creation flow
+│   │   ├── ShareView.tsx         # Recipient share page
+│   │   ├── ImportModal.tsx       # .env paste & import
+│   │   └── ExportButton.tsx      # .env download
+│   ├── layout/
+│   │   ├── Navbar.tsx
+│   │   ├── Sidebar.tsx
+│   │   └── VaultLockButton.tsx
+│   └── ui/                       # shadcn/ui re-exports
+├── lib/
+│   ├── crypto/
+│   │   ├── vault.ts              # PBKDF2 key derivation
+│   │   ├── encrypt.ts            # AES-256-GCM encrypt
+│   │   ├── decrypt.ts            # AES-256-GCM decrypt
+│   │   ├── share.ts              # Share bundle encrypt/decrypt
+│   │   └── utils.ts              # base64 helpers, random bytes
+│   ├── store/
+│   │   └── vaultStore.ts         # Zustand store (derived key, lock state)
+│   ├── auth.ts                   # NextAuth config
+│   ├── db.ts                     # Prisma client singleton
+│   ├── email/
+│   │   ├── send.ts               # Resend wrapper
+│   │   └── templates/
+│   │       ├── ShareEmail.tsx
+│   │       └── VerifyEmail.tsx
+│   └── validations/
+│       └── schemas.ts            # Zod schemas
+├── prisma/
+│   ├── schema.prisma
+│   └── migrations/
+├── middleware.ts                 # Auth protection + rate limiting
+├── next.config.ts
+├── tailwind.config.ts
+└── .env.local                    # Never committed
+
+7. API Routes
+All API routes require authentication via NextAuth session unless marked public. The server only ever receives and returns ciphertext for secret values — it has no decryption capability.
+Method
+Route
+Auth
+Description
+GET
+/api/vault/salt
+Session
+Returns user's PBKDF2 salt. If no vault yet, generates and saves 32 random bytes.
+GET
+/api/projects
+Session
+List all projects for the authenticated user
+POST
+/api/projects
+Session
+Create a project. Body: {name, description?, color?, emoji?}
+GET
+/api/folders?envId=
+Session
+Get full folder tree for an environment
+POST
+/api/secrets
+Session
+Store a new secret. Body: {keyName, valueEncrypted, iv, folderId?, environmentId, tags?}
+PATCH
+/api/secrets/[id]
+Session
+Update a secret value. Old value is moved to SecretHistory automatically.
+GET
+/api/secrets/[id]/history
+Session
+Returns last 5 encrypted historical values for a secret
+POST
+/api/share
+Session
+Create share. Body: {bundleEncrypted, bundleIv, shareSalt, scopeType, scopeId, expiresIn, singleUse, recipientEmail?, note?}
+GET
+/api/share/[token]
+Public
+Validate token, log access, return {bundleEncrypted, bundleIv, shareSalt, scopeType} or 404/410
+POST
+/api/share/revoke
+Session
+Revoke a share by ID. Sets isRevoked=true immediately.
+
+8. Cryptography Implementation
+lib/crypto/vault.ts — Key Derivation
+// Derives AES-256 key from master password + salt using PBKDF2
+// NEVER called server-side. Browser only.
+export async function deriveVaultKey(
+  masterPassword: string,
+  saltBase64: string,
+  iterations = 600_000
+): Promise<CryptoKey> {
+  const salt = fromBase64(saltBase64);
+  const keyMaterial = await crypto.subtle.importKey(
+    'raw',
+    new TextEncoder().encode(masterPassword),
+    'PBKDF2',
+    false,
+    ['deriveKey']
+  );
+  return crypto.subtle.deriveKey(
+    { name: 'PBKDF2', salt, iterations, hash: 'SHA-256' },
+    keyMaterial,
+    { name: 'AES-GCM', length: 256 },
+    false, // not extractable — key never leaves memory as bytes
+    ['encrypt', 'decrypt']
+  );
+}
+lib/crypto/encrypt.ts — Encryption
+export async function encryptSecret(
+  plaintext: string,
+  key: CryptoKey,
+  aad?: string // Additional Authenticated Data (key name + project id)
+): Promise<{ valueEncrypted: string; iv: string }> {
+  const iv = crypto.getRandomValues(new Uint8Array(12));
+  const encoded = new TextEncoder().encode(plaintext);
+  const params: AesGcmParams = {
+    name: 'AES-GCM', iv, tagLength: 128,
+    ...(aad && { additionalData: new TextEncoder().encode(aad) })
+  };
+  const ciphertext = await crypto.subtle.encrypt(params, key, encoded);
+  return { valueEncrypted: toBase64(ciphertext), iv: toBase64(iv) };
+}
+lib/store/vaultStore.ts — In-Memory Key Management
+// Zustand store — CryptoKey lives here, cleared on lock
+interface VaultStore {
+  derivedKey: CryptoKey | null;
+  isUnlocked: boolean;
+  lastActivity: number;
+  unlock: (key: CryptoKey) => void;
+  lock: () => void;
+  touchActivity: () => void;
+}
+ 
+export const useVaultStore = create<VaultStore>((set) => ({
+  derivedKey: null,
+  isUnlocked: false,
+  lastActivity: 0,
+  unlock: (key) => set({ derivedKey: key, isUnlocked: true, lastActivity: Date.now() }),
+  lock: () => set({ derivedKey: null, isUnlocked: false }),
+  touchActivity: () => set({ lastActivity: Date.now() }),
+}));
+ 
+// Auto-lock watcher (called from vault layout)
+export function useAutoLock(timeoutMs = 15 * 60 * 1000) {
+  const { lastActivity, lock, isUnlocked } = useVaultStore();
+  useEffect(() => {
+    if (!isUnlocked) return;
+    const interval = setInterval(() => {
+      if (Date.now() - lastActivity > timeoutMs) lock();
+    }, 30_000); // check every 30 seconds
+    return () => clearInterval(interval);
+  }, [lastActivity, isUnlocked, lock, timeoutMs]);
+}
+
+9. Share & Access System
+9.1 Creating a Share (Sharer Flow)
+This entire flow happens in the browser before anything is sent to the server:
+	•	User selects scope to share (project / environment / folder / specific keys)
+	•	User enters a share passphrase in the ShareModal
+	•	Browser generates 32 random bytes as shareSalt
+	•	PBKDF2 derives shareKey from passphrase + shareSalt (same algorithm, 600k iterations)
+	•	Browser fetches the encrypted secrets for the scope, decrypts them with the vault key
+	•	Re-encrypts each secret with the shareKey into a share bundle
+	•	POST to /api/share with {bundleEncrypted, bundleIv, shareSalt, scopeType, recipientEmail, expiresIn, singleUse}
+Server generates a cryptographically random access token (crypto.randomBytes(32).toString('url-safe')), saves the share record, and sends the recipient an email with the link. The passphrase never touches the server.
+9.2 Accessing a Share (Recipient Flow)
+	•	Recipient receives email with link: https://envault.app/share/[token]
+	•	Browser calls GET /api/share/[token] — server validates token, checks expiry, logs access
+	•	Server returns: {bundleEncrypted, bundleIv, shareSalt, scopeType, note}
+	•	If singleUse=true, token is immediately revoked at this point
+	•	UI shows: share details + passphrase entry form
+	•	Recipient enters passphrase → browser runs PBKDF2(passphrase, shareSalt) → shareKey
+	•	Browser decrypts bundle with shareKey → displays KEY=VALUE pairs with copy/download options
+What the recipient sees if they get the passphrase wrong
+AES-GCM authentication tag verification fails — decryption throws an error
+UI shows: 'Incorrect passphrase. Please try again.'
+No indication of how many attempts remain (no brute-force hint surface)
+After 5 failed attempts: 30-second cooldown enforced client-side
+
+10. UI/UX Specification
+10.1 Screen Map
+Screen
+Key Interactions
+/login
+Email + password or magic link. Redirects to /dashboard if session active.
+/register
+Name + email + password. Sends verification email.
+/dashboard
+Project grid. New project button. Vault lock indicator in navbar.
+Vault Unlock (modal)
+Master password input. Shown over any vault page when key not in memory. Handles PBKDF2 derive.
+/projects/[id]
+Environment tabs (dev, staging, prod). Quick stats per environment.
+/projects/[id]/[envId]
+Three-pane layout: sidebar folder tree + main secrets table + detail panel.
+/projects/[id]/[envId]/[folderId]
+Same three-pane. Breadcrumb updates. Secrets scoped to this folder.
+/share/[token]
+Public page. Share summary + passphrase form + decrypted values table. No auth required.
+/settings
+Master password change, auto-lock timeout, 2FA setup, active shares management, account delete.
+10.2 Vault Unlock Modal
+This is the critical security step between account login and vault access. It appears automatically when:
+	•	User navigates to any vault page and the derived key is not in memory
+	•	Auto-lock timer has expired
+	•	User manually clicks the lock icon
+	•	Page is refreshed or reopened
+The modal is full-screen overlay, non-dismissible (ESC does nothing), with a single master password input. After correct entry, PBKDF2 runs in the browser (~1-2 seconds due to 600k iterations — intentional). A progress indicator shows during derivation. Wrong password shows a generic error, no retry limit shown.
+10.3 Secrets Table (Main Vault View)
+Each row in the secrets table shows:
+	•	KEY_NAME — always visible (stored plaintext in DB as metadata)
+	•	Value — shown as ••••••••••••• until the eye icon is clicked
+	•	Reveal: decrypts in browser, shows value for 30 seconds then re-masks
+	•	Copy: decrypts, copies to clipboard, clears clipboard after 30 seconds, shows countdown
+	•	Edit: opens inline edit with the decrypted value pre-filled
+	•	History: dropdown of last 5 values with timestamps, each individually decryptable
+	•	Tags: colored chips, clickable to filter
+	•	Delete: confirm dialog, then hard delete (secret + all history)
+
+11. Environment Variables
+Create a .env.local file at the project root. Never commit this file.
+# Database (Neon serverless Postgres recommended for Vercel)
+DATABASE_URL="postgresql://user:pass@host/envault?sslmode=require"
+ 
+# NextAuth
+NEXTAUTH_URL="http://localhost:3000"          # change to prod URL on deploy
+NEXTAUTH_SECRET="your-random-32-char-secret"  # openssl rand -base64 32
+ 
+# Resend (email service)
+RESEND_API_KEY="re_xxxxxxxxxxxx"
+RESEND_FROM="EnVault <noreply@yourdomain.com>"
+ 
+# Upstash Redis (rate limiting)
+UPSTASH_REDIS_REST_URL="https://xxx.upstash.io"
+UPSTASH_REDIS_REST_TOKEN="your-token"
+ 
+# App
+NEXT_PUBLIC_APP_URL="http://localhost:3000"
+SHARE_LINK_BASE="http://localhost:3000/share"
+
+12. Deployment Guide (Vercel)
+	•	Create a Neon (neon.tech) or Supabase PostgreSQL database — copy the connection string
+	•	Create an Upstash Redis database (upstash.com) — copy REST URL and token
+	•	Create a Resend account (resend.com), verify your domain, get API key
+	•	Push code to GitHub repository
+	•	Import repo to Vercel, add all environment variables from section 11
+	•	Run database migrations: vercel env pull .env.local && npx prisma migrate deploy
+	•	Deploy. Vercel auto-deploys on every push to main.
+
+13. Implementation Phases
+Phase 1 — Foundation (Week 1)
+	•	Project setup: Next.js 14, TypeScript, Tailwind, shadcn/ui, Prisma
+	•	Database schema creation and first migration
+	•	NextAuth setup with email/password (credentials provider)
+	•	Vault unlock flow: PBKDF2 derivation, Zustand store, auto-lock
+	•	Middleware: session protection, route guards
+Phase 2 — Core Vault (Week 2)
+	•	Project CRUD UI and API routes
+	•	Environment management
+	•	Folder tree: creation, nesting, navigation
+	•	Secret CRUD: add/edit/delete/reveal with full AES-256-GCM encrypt/decrypt
+	•	Copy to clipboard with 30-second clear
+Phase 3 — Files + Import/Export (Week 3)
+	•	VaultFile: creation, editor, download
+	•	Bulk import (.env paste parser)
+	•	Export .env and .zip of project
+	•	Secret history (versioning)
+Phase 4 — Sharing System (Week 4)
+	•	Share creation modal: scope selection, passphrase, expiry options
+	•	Share bundle encryption (re-encrypt with share key)
+	•	Resend email integration: share link email template
+	•	Public share page: token validation, passphrase entry, decrypted view
+	•	Share management: active shares list, revoke, audit log
+Phase 5 — Polish + Security Hardening (Week 5)
+	•	CSP headers, CORS settings, HSTS
+	•	Rate limiting on auth + share endpoints via Upstash
+	•	Master password change (re-encrypt all secrets)
+	•	2FA (TOTP) setup and verification
+	•	Search across key names
+	•	Mobile-responsive UI
+	•	Full security audit against the threat model
+
+14. Pre-Launch Security Checklist
+Cryptography
+	•	All encryption uses AES-256-GCM with a fresh 12-byte random IV per operation
+	•	PBKDF2 uses minimum 600,000 iterations with SHA-256
+	•	PBKDF2 salt is 32 bytes of cryptographically random data
+	•	CryptoKey is not extractable (extractable: false in importKey call)
+	•	AAD (Additional Authenticated Data) is set to bind ciphertext to its context
+	•	Master password is never sent to the server in any form
+	•	Derived key is cleared from memory on lock/logout/page unload
+	•	Share passphrase is never sent to the server
+API & Server
+	•	All vault API routes verify session via getServerSession before any DB access
+	•	DB queries always filter by userId to prevent horizontal privilege escalation
+	•	Share token lookup validates expiry, revocation, and single-use status atomically
+	•	Rate limiting applied to: /api/auth/*, /api/share/*, /api/vault/salt
+	•	Zod validation on all API inputs — no raw request body access
+	•	Error responses never leak stack traces or DB query details in production
+Headers & Transport
+	•	HTTPS enforced via Vercel (automatic) + HSTS header set
+	•	Content-Security-Policy header set: no unsafe-inline, no eval
+	•	X-Frame-Options: DENY to prevent clickjacking
+	•	X-Content-Type-Options: nosniff
+	•	Referrer-Policy: no-referrer
+	•	Cookies: HttpOnly, Secure, SameSite=Strict
+Application
+	•	VaultUnlock modal is non-dismissible — no way to bypass it
+	•	Auto-lock fires on inactivity and page visibility change (visibilitychange event)
+	•	Clipboard auto-clear runs even if the component unmounts before the 30s timer
+	•	No secret values are ever logged to console or error reporting services
+	•	Import parser handles malformed .env files gracefully without executing content
+	•	Share recipient page shows no error detail on invalid token (generic 404)
+
+Quick Start
+# Clone and install
+git clone https://github.com/you/envault.git
+cd envault
+npm install
+ 
+# Set up environment
+cp .env.example .env.local
+# Edit .env.local with your database URL, NextAuth secret, Resend API key
+ 
+# Set up database
+npx prisma migrate dev --name init
+npx prisma generate
+ 
+# Run development server
+npm run dev
+# Open http://localhost:3000
+
+EnVault
+Built with security as the only compromise-free requirement.
