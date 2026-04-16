@@ -3,7 +3,7 @@ generator client {
 }
  
 datasource db {
-  provider = "postgresql"
+  provider = "sqlite"
   url      = env("DATABASE_URL")
 }
  
@@ -51,6 +51,7 @@ model Environment {
  
   folders   Folder[]
   secrets   Secret[]
+  vaultFiles VaultFile[]
  
   @@unique([projectId, name])
 }
@@ -75,7 +76,7 @@ model Secret {
   keyName       String   
   valueEncrypted String  
   iv            String   
-  tags          String[] 
+  tags          String   @default("")
   environmentId String
   environment   Environment @relation(fields: [environmentId], references: [id], onDelete: Cascade)
   folderId      String?
@@ -103,8 +104,10 @@ model VaultFile {
   contentEncrypted String 
   iv             String
   mimeType       String  @default("text/plain")
-  folderId       String
-  folder         Folder  @relation(fields: [folderId], references: [id], onDelete: Cascade)
+  environmentId  String
+  environment    Environment @relation(fields: [environmentId], references: [id], onDelete: Cascade)
+  folderId       String?
+  folder         Folder?  @relation(fields: [folderId], references: [id])
   createdAt      DateTime @default(now())
   updatedAt      DateTime @updatedAt
 }
