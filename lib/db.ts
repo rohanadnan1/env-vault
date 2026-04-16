@@ -30,7 +30,7 @@ export async function getFolderTree(environmentId: string, userId: string) {
 
   // Transform flat list to tree
   const folderMap = new Map();
-  const roots: any[] = [];
+  const roots: unknown[] = [];
 
   allFolders.forEach(folder => {
     folderMap.set(folder.id, { ...folder, children: [] });

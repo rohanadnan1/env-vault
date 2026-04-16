@@ -44,7 +44,7 @@ export default function RegisterPage() {
 
       toast.success('Account created! Please sign in.');
       router.push('/login');
-    } catch (err: any) {
+    } catch (err) {
       toast.error(err.message);
     } finally {
       setIsLoading(false);

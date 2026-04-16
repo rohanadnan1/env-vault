@@ -52,7 +52,7 @@ export function CreateProjectModal() {
       setOpen(false);
       setFormData({ name: '', description: '', color: '#6366F1', emoji: '📁' });
       router.refresh();
-    } catch (err) {
+    } catch (_err) {
       toast.error('Could not create project');
     } finally {
       setIsLoading(false);

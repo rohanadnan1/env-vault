@@ -57,7 +57,7 @@ export function ExportButton({ environmentId, folderId, envName }: ExportButtonP
           const aad = `${secret.keyName}:${environmentId}`;
           const plaintext = await decryptSecret(secret.valueEncrypted, secret.iv, derivedKey, aad);
           envContent += `${secret.keyName}=${plaintext}\n`;
-        } catch (err) {
+        } catch (_err) {
           envContent += `# ERROR DECRYPTING ${secret.keyName}\n`;
         }
       }
@@ -74,7 +74,7 @@ export function ExportButton({ environmentId, folderId, envName }: ExportButtonP
       URL.revokeObjectURL(url);
       
       toast.success('Secrets exported successfully');
-    } catch (err) {
+    } catch (_err) {
       toast.error('Export failed');
     } finally {
       setIsExporting(false);

@@ -91,7 +91,7 @@ export function SecretRow({
           if (document.hasFocus()) {
             navigator.clipboard.writeText('');
           }
-        } catch (err) {}
+        } catch (_err) {}
       }, REVEAL_DURATION * 1000);
     }
     return () => clearTimeout(timer);
@@ -124,7 +124,7 @@ export function SecretRow({
       });
       
       console.log(`[SecretRow] Decrypted ${keyName}: length=${decrypted.length}`);
-    } catch (err) {
+    } catch (_err) {
       console.error('[SecretRow] Decryption failed:', err);
       toast.error('Decryption failed. Check your master password.');
     } finally {
@@ -145,7 +145,7 @@ export function SecretRow({
       setIsCopied(true);
       toast.success('Copied to clipboard. Will clear in 30s.');
       touchActivity();
-    } catch (err) {
+    } catch (_err) {
       toast.error('Failed to copy secret');
     }
   };
@@ -164,7 +164,7 @@ export function SecretRow({
       toast.success('Secret deleted successfully');
       setIsDeleteOpen(false);
       router.refresh(); // Update the server component list
-    } catch (err) {
+    } catch (_err) {
       toast.error('Failed to delete secret');
       setIsDeleting(false);
     }

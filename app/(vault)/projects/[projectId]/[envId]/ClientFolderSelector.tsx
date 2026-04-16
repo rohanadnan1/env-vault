@@ -23,7 +23,7 @@ export function ClientFolderSelector({
   projectId, 
   envId 
 }: { 
-  folderTree: any[];
+  folderTree: unknown[];
   activeFolderId?: string;
   projectId: string;
   envId: string;

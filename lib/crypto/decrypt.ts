@@ -28,7 +28,7 @@ export async function decryptSecret(
     
     const decrypted = await crypto.subtle.decrypt(params, key, ciphertext as any);
     return new TextDecoder().decode(decrypted);
-  } catch (err) {
+  } catch (_err) {
     // Never log plaintext / inner errors to avoid leaking key info
     throw new DecryptionError('Failed to decrypt');
   }

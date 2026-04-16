@@ -71,7 +71,7 @@ export function FileEditor({
       const aad = `${initialData?.name || name}:${folderId}`;
       const decrypted = await decryptSecret(encrypted, iv, derivedKey, aad);
       setContent(decrypted);
-    } catch (err) {
+    } catch (_err) {
       toast.error('Failed to decrypt file content');
     } finally {
       setIsDecrypting(false);
@@ -112,7 +112,7 @@ export function FileEditor({
       toast.success(initialData?.id ? 'File updated' : 'File created');
       onSuccess();
       onOpenChange(false);
-    } catch (err) {
+    } catch (_err) {
       toast.error('Save failed');
     } finally {
       setIsLoading(false);
@@ -194,6 +194,6 @@ export function FileEditor({
   );
 }
 
-function Separator({ orientation, className }: any) {
+function Separator({ orientation, className }: unknown) {
   return <div className={cn("bg-slate-200", orientation === 'vertical' ? 'w-[1px]' : 'h-[1px]', className)} />;
 }

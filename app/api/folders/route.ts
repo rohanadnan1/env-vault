@@ -18,7 +18,7 @@ export async function GET(req: Request) {
   try {
     const tree = await getFolderTree(environmentId, session.user.id);
     return NextResponse.json(tree);
-  } catch (err: any) {
+  } catch (err) {
     return NextResponse.json({ error: err.message }, { status: 404 });
   }
 }

@@ -49,7 +49,7 @@ export function SecurityTab() {
           const data = await res.json();
           setIs2FAEnabled(data.enabled);
         }
-      } catch (err) {
+      } catch (_err) {
         console.error("Failed to load security status");
       } finally {
         setIsLoading(false);
@@ -77,7 +77,7 @@ export function SecurityTab() {
       } else {
         toast.error("Failed to disable 2FA");
       }
-    } catch (err) {
+    } catch (_err) {
       toast.error("An error occurred");
     }
   };

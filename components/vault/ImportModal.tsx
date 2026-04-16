@@ -122,7 +122,7 @@ export function ImportModal({
           updatedResults[i].status = errData.error?.includes('unique constraint') ? 'duplicate' : 'error';
           updatedResults[i].error = errData.error || 'Failed';
         }
-      } catch (err) {
+      } catch (_err) {
         updatedResults[i].status = 'error';
         updatedResults[i].error = 'Encryption failed';
       }
@@ -224,6 +224,6 @@ export function ImportModal({
   );
 }
 
-function Badge({ children, className, variant }: any) {
+function Badge({ children, className, variant }: unknown) {
   return <span className={`px-2 py-0.5 rounded-full text-xs font-medium ${className}`}>{children}</span>;
 }

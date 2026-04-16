@@ -58,7 +58,7 @@ export function SecretHistoryModal({
       if (!res.ok) throw new Error('Failed to fetch history');
       const data = await res.json();
       setHistory(data);
-    } catch (err) {
+    } catch (_err) {
       toast.error('Could not load history');
     } finally {
       setIsLoading(false);
@@ -82,7 +82,7 @@ export function SecretHistoryModal({
       const aad = `${keyName}:${environmentId}`;
       const decrypted = await decryptSecret(item.valueEncrypted, item.iv, derivedKey, aad);
       setRevealedIds({ ...revealedIds, [item.id]: decrypted });
-    } catch (err) {
+    } catch (_err) {
       toast.error('Decryption failed');
     }
   }

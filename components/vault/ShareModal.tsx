@@ -73,7 +73,7 @@ export function ShareModal({
 
     try {
       // 1. Fetch secrets in scope
-      let secrets: any[] = [];
+      let secrets: unknown[] = [];
 
       if (scopeType === 'ENV') {
         const res = await fetch(`/api/secrets?envId=${scopeId}`);
@@ -89,7 +89,7 @@ export function ShareModal({
         const projectsRes = await fetch('/api/projects');
         if (!projectsRes.ok) throw new Error('Failed to fetch project data');
         const projects = await projectsRes.json();
-        const project = projects.find((p: any) => p.id === scopeId);
+        const project = projects.find((p: unknown) => p.id === scopeId);
         if (!project) throw new Error('Project not found');
         for (const env of project.environments ?? []) {
           const envRes = await fetch(`/api/secrets?envId=${env.id}`);
@@ -147,7 +147,7 @@ export function ShareModal({
       setShareUrl(shareData.url);
       setStep('result');
       toast.success('Share link generated!');
-    } catch (err) {
+    } catch (_err) {
       console.error(err);
       toast.error('Could not create share link');
     } finally {

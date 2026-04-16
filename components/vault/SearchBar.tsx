@@ -51,7 +51,7 @@ export function SearchBar() {
           const data = await res.json();
           setResults(data);
         }
-      } catch (err) {
+      } catch (_err) {
         console.error("Search failed:", err);
       } finally {
         setIsLoading(false);
@@ -62,7 +62,7 @@ export function SearchBar() {
     return () => clearTimeout(timer);
   }, [query]);
 
-  const onSelect = (result: any) => {
+  const onSelect = (result: unknown) => {
     setOpen(false);
     touchActivity();
     

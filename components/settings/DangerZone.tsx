@@ -42,7 +42,7 @@ export function DangerZone() {
       } else {
         throw new Error("Failed to delete account");
       }
-    } catch (err) {
+    } catch (_err) {
       toast.error("An error occurred while deleting your account.");
       setIsDeleting(false);
     }

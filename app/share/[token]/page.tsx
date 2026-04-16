@@ -229,6 +229,6 @@ export default function ShareRecipientPage({ params }: { params: Promise<{ token
   );
 }
 
-function Label({ children, className, ...props }: any) {
+function Label({ children, className, ...props }: unknown) {
   return <label className={`text-sm font-semibold text-slate-700 ${className}`} {...props}>{children}</label>;
 }

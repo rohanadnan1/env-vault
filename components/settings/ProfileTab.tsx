@@ -102,7 +102,7 @@ export function ProfileTab() {
   );
 }
 
-function ShieldCheck(props: any) {
+function ShieldCheck(props: unknown) {
   return (
     <svg
       {...props}

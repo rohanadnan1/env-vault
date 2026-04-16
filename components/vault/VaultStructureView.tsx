@@ -14,11 +14,11 @@ import { ClientSecretActions } from '@/app/(vault)/projects/[projectId]/[envId]/
 import { ExportButton } from '@/components/vault/ExportButton';
 
 interface VaultStructureViewProps {
-  project: any;
-  environment: any;
-  currentFolder: any;
-  secrets: any[];
-  files: any[];
+  project: unknown;
+  environment: unknown;
+  currentFolder: unknown;
+  secrets: unknown[];
+  files: unknown[];
   envId: string;
   folderId: string | null;
 }

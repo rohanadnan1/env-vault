@@ -154,6 +154,6 @@ export default async function SharesPage() {
   );
 }
 
-function LinkIcon({ className }: any) {
+function LinkIcon({ className }: unknown) {
   return <ExternalLink className={className} />;
 }

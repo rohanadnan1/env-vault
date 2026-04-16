@@ -40,7 +40,7 @@ export function TwoFactorSetup({ open, onOpenChange, onSuccess }: TwoFactorSetup
       } else {
         toast.error("Failed to start 2FA setup");
       }
-    } catch (err) {
+    } catch (_err) {
       toast.error("An error occurred during setup");
     } finally {
       setIsLoading(false);
@@ -67,7 +67,7 @@ export function TwoFactorSetup({ open, onOpenChange, onSuccess }: TwoFactorSetup
         const data = await res.json();
         toast.error(data.error || "Verification failed");
       }
-    } catch (err) {
+    } catch (_err) {
       toast.error("Verification failed");
     } finally {
       setIsLoading(false);

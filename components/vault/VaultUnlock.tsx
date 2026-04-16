@@ -59,7 +59,7 @@ export function VaultUnlock() {
       const key = await deriveVaultKey(decryptedPw, salt);
       unlock(key);
       toast.success('Vault unlocked with Touch ID');
-    } catch (err: any) {
+    } catch (_err) {
       console.error('Biometric unlock failed:', err);
       if (err.name !== 'NotAllowedError') { // Ignore user cancel
         toast.error('Biometric unlock failed. Please use your password.');
@@ -89,20 +89,20 @@ export function VaultUnlock() {
               await enrollBiometrics(password);
               setBiometricEnrolled(true);
               toast.success('Biometric unlock enabled');
-            } catch (err) {
+            } catch (_err) {
               console.error('Failed to enroll biometrics:', err);
               toast.error('Failed to enable biometric unlock');
             }
           }
           
           unlock(key);
-        } catch (err) {
+        } catch (_err) {
           setError(true);
           setIsLoading(false);
         }
       }, 10);
       
-    } catch (err) {
+    } catch (_err) {
       setError(true);
       setIsLoading(false);
     }
