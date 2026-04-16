@@ -5,7 +5,7 @@ import { z } from 'zod';
 import crypto from 'crypto';
 import { Resend } from 'resend';
 
-const resend = new Resend(process.env.RESEND_API_KEY);
+// Move Resend initialization inside the handler to prevent build-time errors
 
 const CreateShareSchema = z.object({
   projectId: z.string().optional(),
@@ -73,8 +73,12 @@ export async function POST(req: Request) {
 
     // 7. Send email if recipient provided
     if (data.recipientEmail) {
-      try {
-        await resend.emails.send({
+      if (!process.env.RESEND_API_KEY) {
+        console.error('RESEND_API_KEY is missing. Email not sent.');
+      } else {
+        try {
+          const resend = new Resend(process.env.RESEND_API_KEY);
+          await resend.emails.send({
           from: process.env.RESEND_FROM || 'EnVault <onboarding@resend.dev>',
           to: data.recipientEmail,
           subject: `Secure secrets shared with you: ${scopeName}`,
@@ -100,8 +104,9 @@ export async function POST(req: Request) {
         console.error('Failed to send email:', err);
       }
     }
+  }
 
-    return NextResponse.json({
+  return NextResponse.json({
       id: share.id,
       accessToken,
       url: shareUrl
