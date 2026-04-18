@@ -14,7 +14,7 @@ import { ClientSecretActions } from '@/app/(vault)/projects/[projectId]/[envId]/
 import { ExportButton } from '@/components/vault/ExportButton';
 
 interface VaultStructureViewProps {
-  project: { name: string };
+  project: { id: string; name: string };
   environment: { name: string };
   currentFolder: { name: string } | null;
   secrets: { id: string; keyName: string; valueEncrypted: string; iv: string; tags: string }[];
@@ -78,9 +78,12 @@ export function VaultStructureView({
             />
           </div>
           <ExportButton 
-            environmentId={envId} 
-            folderId={folderId || null} 
-            envName={environment.name} 
+            projectId={project.id || ''}
+            projectName={project.name}
+            environmentId={envId}
+            environmentName={environment.name}
+            folderId={folderId || null}
+            folderName={currentFolder?.name || null}
           />
           <ClientSecretActions environmentId={envId} folderId={folderId || null} />
         </div>
