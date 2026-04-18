@@ -112,7 +112,7 @@ export async function POST(req: Request) {
       url: shareUrl
     }, { status: 201 });
   } catch (e) {
-    if (e instanceof z.ZodError) return NextResponse.json({ error: e.issues[0].message }, { status: 400 });
+    if (e instanceof z.ZodError) return NextResponse.json({ error: (e as z.ZodError).issues[0].message }, { status: 400 });
     console.error(e);
     return NextResponse.json({ error: 'Internal Server Error' }, { status: 500 });
   }

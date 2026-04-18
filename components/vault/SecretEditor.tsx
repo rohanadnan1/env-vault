@@ -91,8 +91,12 @@ export function SecretEditor({
       toast.success(initialData?.id ? 'Secret updated' : 'Secret created');
       onSuccess();
       onOpenChange(false);
-    } catch (_err) {
-      toast.error(err.message);
+    } catch (err) {
+      if (err instanceof Error) {
+        toast.error(err.message);
+      } else {
+        toast.error('Save failed');
+      }
     } finally {
       setIsLoading(false);
     }

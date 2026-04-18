@@ -58,8 +58,12 @@ export function RenameFolderModal({
       toast.success('Folder renamed successfully');
       onOpenChange(false);
       router.refresh();
-    } catch (_err) {
-      toast.error(err.message);
+    } catch (err) {
+      if (err instanceof Error) {
+        toast.error(err.message);
+      } else {
+        toast.error('Failed to rename folder');
+      }
     } finally {
       setIsLoading(false);
     }

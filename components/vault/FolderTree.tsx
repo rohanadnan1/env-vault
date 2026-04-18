@@ -3,28 +3,20 @@
 import { useState } from 'react';
 import { ChevronRight, ChevronDown, Folder, FolderOpen, MoreVertical, Plus, Pencil, Trash2 } from 'lucide-react';
 import { cn } from '@/lib/utils';
-import { Button } from '@/components/ui/button';
 import { 
   DropdownMenu, 
   DropdownMenuContent, 
   DropdownMenuItem, 
   DropdownMenuTrigger 
 } from '@/components/ui/dropdown-menu';
-
-interface FolderNode {
-  id: string;
-  name: string;
-  environmentId: string;
-  parentId: string | null;
-  children: FolderNode[];
-}
+import { type FolderNode } from '@/lib/db';
 
 interface FolderTreeProps {
   folders: FolderNode[];
   activeFolderId?: string;
-  onSelect: (id: string) => void;
-  onCreateSubfolder?: (parentId: string) => void;
-  onRename?: (id: string, currentName: string) => void;
+  onSelect: (val: string) => void;
+  onCreateSubfolder?: (val: string) => void;
+  onRename?: (id: string, name: string) => void;
   onDelete?: (id: string, name: string) => void;
 }
 
@@ -64,8 +56,8 @@ function FolderItem({
   folder: FolderNode, 
   activeFolderId?: string, 
   onSelect: (id: string) => void 
-  onCreateSubfolder?: (parentId: string) => void;
-  onRename?: (id: string, currentName: string) => void;
+  onCreateSubfolder?: (id: string) => void;
+  onRename?: (id: string, name: string) => void;
   onDelete?: (id: string, name: string) => void;
 }) {
   const [isOpen, setIsOpen] = useState(true);
@@ -85,8 +77,8 @@ function FolderItem({
       >
         <div className="flex items-center min-w-0 flex-1">
           <button 
-            onClick={(e) => {
-              e.stopPropagation();
+            onClick={(evt) => {
+              evt.stopPropagation();
               setIsOpen(!isOpen);
             }}
             className={cn(
@@ -112,7 +104,7 @@ function FolderItem({
               render={
                 <button 
                   className="p-1 hover:bg-slate-200 rounded-sm text-slate-400 hover:text-slate-600 outline-none"
-                  onClick={(e) => e.stopPropagation()}
+                  onClick={(evt) => evt.stopPropagation()}
                 >
                   <MoreVertical className="w-3.5 h-3.5" />
                 </button>

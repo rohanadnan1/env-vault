@@ -53,7 +53,11 @@ export function CreateEnvironmentModal({
       onOpenChange(false);
       router.refresh();
     } catch (err) {
-      toast.error(err.message);
+      if (err instanceof Error) {
+        toast.error(err.message);
+      } else {
+        toast.error('An unexpected error occurred');
+      }
     } finally {
       setIsLoading(false);
     }

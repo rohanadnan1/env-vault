@@ -60,7 +60,6 @@ export default async function ProjectPage({ params }: { params: Promise<{ projec
         </div>
         <ClientProjectActions 
           projectId={projectId} 
-          hasEnvironments={project.environments.length > 0} 
           initialData={project}
         />
       </div>

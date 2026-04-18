@@ -2,7 +2,7 @@
 
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
-import { FolderGit2, Plus } from 'lucide-react';
+import { FolderGit2 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { CreateProjectModal } from '@/components/vault/CreateProjectModal';
 

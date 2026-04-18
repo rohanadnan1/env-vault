@@ -47,7 +47,7 @@ function InputGroupAddon({
   className,
   align = "inline-start",
   ...props
-}: React.ComponentProps<"div"> & VariantProps<typeof inputGroupAddonVariants>) {
+}: React.ComponentProps<"div"> & { align?: "inline-start" | "inline-end" | "block-start" | "block-end" | null }) {
   return (
     <div
       role="group"
@@ -90,7 +90,7 @@ function InputGroupButton({
   size = "xs",
   ...props
 }: Omit<React.ComponentProps<typeof Button>, "size" | "type"> &
-  VariantProps<typeof inputGroupButtonVariants> & {
+  { size?: "xs" | "sm" | "icon-xs" | "icon-sm" | null } & {
     type?: "button" | "submit" | "reset"
   }) {
   return (

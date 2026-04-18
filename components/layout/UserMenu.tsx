@@ -3,11 +3,9 @@
 import { useSession, signOut } from "next-auth/react";
 import { useRouter } from "next/navigation";
 import { 
-  User, 
   Settings, 
   LogOut, 
   LockKeyhole, 
-  Monitor,
   ExternalLink
 } from "lucide-react";
 import {

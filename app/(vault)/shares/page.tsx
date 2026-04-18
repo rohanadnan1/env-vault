@@ -12,7 +12,8 @@ import {
   ShieldAlert,
   Calendar,
   MousePointer2,
-  UserPlus
+  UserPlus,
+  Link as LinkIcon
 } from 'lucide-react';
 import Link from 'next/link';
 import ClientShareManager from './ClientShareManager';
@@ -154,6 +155,3 @@ export default async function SharesPage() {
   );
 }
 
-function LinkIcon({ className }: unknown) {
-  return <ExternalLink className={className} />;
-}

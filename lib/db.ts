@@ -6,7 +6,13 @@ export const db = globalForPrisma.prisma || new PrismaClient();
 
 if (process.env.NODE_ENV !== "production") globalForPrisma.prisma = db;
 
-export type FolderWithChildren = any; // Type defined in usage or below
+export interface FolderNode {
+  id: string;
+  name: string;
+  environmentId: string;
+  parentId: string | null;
+  children: FolderNode[];
+}
 
 export async function getFolderTree(environmentId: string, userId: string) {
   // Verify ownership via environment -> project -> user
@@ -29,17 +35,17 @@ export async function getFolderTree(environmentId: string, userId: string) {
   });
 
   // Transform flat list to tree
-  const folderMap = new Map();
-  const roots: unknown[] = [];
+  const folderMap = new Map<string, FolderNode>();
+  const roots: FolderNode[] = [];
 
   allFolders.forEach(folder => {
     folderMap.set(folder.id, { ...folder, children: [] });
   });
 
   allFolders.forEach(folder => {
-    const folderWithChildren = folderMap.get(folder.id);
+    const folderWithChildren = folderMap.get(folder.id)!;
     if (folder.parentId && folderMap.has(folder.parentId)) {
-      folderMap.get(folder.parentId).children.push(folderWithChildren);
+      folderMap.get(folder.parentId)!.children.push(folderWithChildren);
     } else {
       roots.push(folderWithChildren);
     }

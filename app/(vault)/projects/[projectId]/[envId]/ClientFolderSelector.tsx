@@ -3,6 +3,7 @@
 import { useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { FolderTree } from '@/components/vault/FolderTree';
+import { type FolderNode } from '@/lib/db';
 import { CreateFolderModal } from '@/components/vault/CreateFolderModal';
 import { RenameFolderModal } from '@/components/vault/RenameFolderModal';
 import { 
@@ -23,7 +24,7 @@ export function ClientFolderSelector({
   projectId, 
   envId 
 }: { 
-  folderTree: unknown[];
+  folderTree: FolderNode[];
   activeFolderId?: string;
   projectId: string;
   envId: string;

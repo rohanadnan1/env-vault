@@ -59,7 +59,7 @@ export default async function DashboardPage() {
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
           {projects.map((project) => {
             const secretCount = project.environments.reduce(
-              (acc, env) => acc + env._count.secrets, 
+              (acc: number, env) => acc + env._count.secrets, 
               0
             );
 

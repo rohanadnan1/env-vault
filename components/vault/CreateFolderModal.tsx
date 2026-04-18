@@ -55,8 +55,12 @@ export function CreateFolderModal({
       setName('');
       onOpenChange(false);
       router.refresh();
-    } catch (_err) {
-      toast.error(err.message);
+    } catch (err) {
+      if (err instanceof Error) {
+        toast.error(err.message);
+      } else {
+        toast.error('Failed to create folder');
+      }
     } finally {
       setIsLoading(false);
     }

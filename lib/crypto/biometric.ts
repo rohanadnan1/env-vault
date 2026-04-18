@@ -9,6 +9,19 @@ const IV_KEY = 'envault_bio_iv';
 // Constant salt for PRF - domain separated by WebAuthn spec
 const PRF_SALT = new Uint8Array(32).fill(7); 
 
+interface WebAuthnPRFExtension {
+  prf?: {
+    eval?: {
+      first: Uint8Array;
+      second?: Uint8Array;
+    };
+    results?: {
+      first: ArrayBuffer;
+      second?: ArrayBuffer;
+    };
+  };
+}
+
 export async function isBiometricSupported(): Promise<boolean> {
   if (!window.PublicKeyCredential || 
       !PublicKeyCredential.isUserVerifyingPlatformAuthenticatorAvailable) {
@@ -68,7 +81,7 @@ export async function enrollBiometrics(masterPassword: string): Promise<void> {
 
   if (!credential) throw new Error('Failed to create biometric credential');
 
-  const extensionResults = credential.getClientExtensionResults() as any;
+  const extensionResults = credential.getClientExtensionResults() as AuthenticationExtensionsClientOutputs & WebAuthnPRFExtension;
   const prfResult = extensionResults.prf?.results?.first;
   
   if (!prfResult) {
@@ -129,7 +142,7 @@ export async function unlockWithBiometrics(): Promise<string> {
 
   if (!assertion) throw new Error('Biometric scan failed');
 
-  const extensionResults = assertion.getClientExtensionResults() as any;
+  const extensionResults = assertion.getClientExtensionResults() as AuthenticationExtensionsClientOutputs & WebAuthnPRFExtension;
   const prfResult = extensionResults.prf?.results?.first;
 
   if (!prfResult) throw new Error('Failed to derive biometric key');

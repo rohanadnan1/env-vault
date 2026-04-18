@@ -134,7 +134,7 @@ export function DangerZone() {
           <Info className="w-5 h-5 text-slate-400" />
         </div>
         <div className="text-xs text-slate-500 leading-relaxed pt-1">
-          At EnVault, your privacy is our priority. When you delete your account, we don't just "soft-delete" or deactivate: 
+          At EnVault, your privacy is our priority. When you delete your account, we don&apos;t just &quot;soft-delete&quot; or deactivate: 
           we purge your records from our primary database and invalidate all associated cryptographic salts in your zero-knowledge model. 
           Some log data (IP logs, account events) may persist in isolated backups for up to 30 days for security and compliance auditing.
         </div>

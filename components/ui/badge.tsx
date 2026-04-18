@@ -32,7 +32,7 @@ function Badge({
   variant = "default",
   render,
   ...props
-}: useRender.ComponentProps<"span"> & VariantProps<typeof badgeVariants>) {
+}: useRender.ComponentProps<"span"> & { variant?: "default" | "secondary" | "destructive" | "outline" | "ghost" | "link" | null }) {
   return useRender({
     defaultTagName: "span",
     props: mergeProps<"span">(

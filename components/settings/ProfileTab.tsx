@@ -2,7 +2,7 @@
 
 import { useState, useEffect } from "react";
 import { useSession } from "next-auth/react";
-import { User, Mail, Calendar } from "lucide-react";
+import { User, Mail, Calendar, ShieldCheck } from "lucide-react";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Label } from "@/components/ui/label";
 import { Input } from "@/components/ui/input";
@@ -12,12 +12,12 @@ export function ProfileTab() {
   const { data: session } = useSession();
   const [name, setName] = useState("");
 
-  // Update name when session loads
+  // Update name when session loads only if the user hasn't explicitly changed it
   useEffect(() => {
-    if (session?.user?.name) {
+    if (session?.user?.name && name === "") {
       setName(session.user.name);
     }
-  }, [session?.user?.name]);
+  }, [session?.user?.name, name]);
 
   return (
     <div className="space-y-6">
@@ -102,22 +102,3 @@ export function ProfileTab() {
   );
 }
 
-function ShieldCheck(props: unknown) {
-  return (
-    <svg
-      {...props}
-      xmlns="http://www.w3.org/2000/svg"
-      width="24"
-      height="24"
-      viewBox="0 0 24 24"
-      fill="none"
-      stroke="currentColor"
-      strokeWidth="2"
-      strokeLinecap="round"
-      strokeLinejoin="round"
-    >
-      <path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10" />
-      <path d="m9 12 2 2 4-4" />
-    </svg>
-  )
-}

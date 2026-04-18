@@ -8,7 +8,6 @@ import { ProjectSettingsModal } from '@/components/vault/ProjectSettingsModal';
 
 interface ClientProjectActionsProps {
   projectId: string;
-  hasEnvironments: boolean;
   initialData: {
     id: string;
     name: string;
@@ -18,7 +17,7 @@ interface ClientProjectActionsProps {
   };
 }
 
-export function ClientProjectActions({ projectId, hasEnvironments, initialData }: ClientProjectActionsProps) {
+export function ClientProjectActions({ projectId, initialData }: ClientProjectActionsProps) {
   const [isEnvModalOpen, setIsEnvModalOpen] = useState(false);
   const [isSettingsOpen, setIsSettingsOpen] = useState(false);
 

@@ -1,22 +1,18 @@
 "use client";
 
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useCallback } from 'react';
 import {
   Dialog,
   DialogContent,
-  DialogHeader,
-  DialogTitle,
-  DialogFooter,
 } from '@/components/ui/dialog';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
-import { Label } from '@/components/ui/label';
 import { Textarea } from '@/components/ui/textarea';
 import { encryptSecret } from '@/lib/crypto/encrypt';
 import { decryptSecret } from '@/lib/crypto/decrypt';
 import { useVaultStore } from '@/lib/store/vaultStore';
 import { toast } from 'sonner';
-import { FileText, Save, X, Maximize2, Minimize2 } from 'lucide-react';
+import { FileText, Save, Maximize2, Minimize2 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 
 interface FileEditorProps {
@@ -51,6 +47,21 @@ export function FileEditor({
   const derivedKey = useVaultStore((s) => s.derivedKey);
   const touchActivity = useVaultStore((s) => s.touchActivity);
 
+  const handleDecrypt = useCallback(async (encrypted: string, iv: string) => {
+    if (!derivedKey) return;
+    setIsDecrypting(true);
+    try {
+      const aad = `${initialData?.name || name}:${folderId}`;
+      const decrypted = await decryptSecret(encrypted, iv, derivedKey, aad);
+      setContent(decrypted);
+    } catch (err) {
+      console.error(err);
+      toast.error('Failed to decrypt file content');
+    } finally {
+      setIsDecrypting(false);
+    }
+  }, [derivedKey, folderId, initialData?.name, name]);
+
   useEffect(() => {
     if (open) {
       if (initialData) {
@@ -61,22 +72,7 @@ export function FileEditor({
         setContent('');
       }
     }
-  }, [open, initialData]);
-
-  const handleDecrypt = async (encrypted: string, iv: string) => {
-    if (!derivedKey) return;
-    setIsDecrypting(true);
-    try {
-      // For files, AAD is just the name or name+folder
-      const aad = `${initialData?.name || name}:${folderId}`;
-      const decrypted = await decryptSecret(encrypted, iv, derivedKey, aad);
-      setContent(decrypted);
-    } catch (_err) {
-      toast.error('Failed to decrypt file content');
-    } finally {
-      setIsDecrypting(false);
-    }
-  };
+  }, [open, initialData, handleDecrypt]);
 
   const handleSave = async () => {
     if (!derivedKey) {
@@ -112,7 +108,8 @@ export function FileEditor({
       toast.success(initialData?.id ? 'File updated' : 'File created');
       onSuccess();
       onOpenChange(false);
-    } catch (_err) {
+    } catch (err) {
+      console.error(err);
       toast.error('Save failed');
     } finally {
       setIsLoading(false);
@@ -194,6 +191,6 @@ export function FileEditor({
   );
 }
 
-function Separator({ orientation, className }: unknown) {
+function Separator({ orientation, className }: { orientation?: 'horizontal' | 'vertical'; className?: string }) {
   return <div className={cn("bg-slate-200", orientation === 'vertical' ? 'w-[1px]' : 'h-[1px]', className)} />;
 }

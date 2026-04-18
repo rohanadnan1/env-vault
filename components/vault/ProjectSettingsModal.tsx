@@ -8,7 +8,6 @@ import {
   DialogHeader,
   DialogTitle,
   DialogDescription,
-  DialogFooter,
 } from '@/components/ui/dialog';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -78,7 +77,8 @@ export function ProjectSettingsModal({
       toast.success('Project updated successfully');
       onOpenChange(false);
       router.refresh();
-    } catch (_err) {
+    } catch (err) {
+      console.error(err);
       toast.error('Could not update project');
     } finally {
       setIsLoading(false);
@@ -102,7 +102,8 @@ export function ProjectSettingsModal({
       toast.success('Project deleted successfully');
       onOpenChange(false);
       router.push('/dashboard');
-    } catch (_err) {
+    } catch (err) {
+      console.error(err);
       toast.error('Could not delete project');
     } finally {
       setIsLoading(false);

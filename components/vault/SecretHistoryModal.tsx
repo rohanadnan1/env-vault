@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useCallback } from 'react';
 import {
   Dialog,
   DialogContent,
@@ -9,7 +9,6 @@ import {
   DialogDescription,
 } from '@/components/ui/dialog';
 import { Button } from '@/components/ui/button';
-import { Badge } from '@/components/ui/badge';
 import { Eye, EyeOff, Clock, History } from 'lucide-react';
 import { decryptSecret } from '@/lib/crypto/decrypt';
 import { useVaultStore } from '@/lib/store/vaultStore';
@@ -43,27 +42,28 @@ export function SecretHistoryModal({
   
   const derivedKey = useVaultStore((s) => s.derivedKey);
 
-  useEffect(() => {
-    if (open) {
-      fetchHistory();
-    } else {
-      setRevealedIds({});
-    }
-  }, [open]);
-
-  async function fetchHistory() {
+  const fetchHistory = useCallback(async () => {
     setIsLoading(true);
     try {
       const res = await fetch(`/api/secrets/${secretId}/history`);
       if (!res.ok) throw new Error('Failed to fetch history');
       const data = await res.json();
       setHistory(data);
-    } catch (_err) {
+    } catch (err) {
+      console.error(err);
       toast.error('Could not load history');
     } finally {
       setIsLoading(false);
     }
-  }
+  }, [secretId]);
+
+  useEffect(() => {
+    if (open) {
+      fetchHistory();
+    } else {
+      setRevealedIds({});
+    }
+  }, [open, fetchHistory]);
 
   async function handleReveal(item: HistoryItem) {
     if (revealedIds[item.id]) {
@@ -82,7 +82,8 @@ export function SecretHistoryModal({
       const aad = `${keyName}:${environmentId}`;
       const decrypted = await decryptSecret(item.valueEncrypted, item.iv, derivedKey, aad);
       setRevealedIds({ ...revealedIds, [item.id]: decrypted });
-    } catch (_err) {
+    } catch (err) {
+      console.error(err);
       toast.error('Decryption failed');
     }
   }

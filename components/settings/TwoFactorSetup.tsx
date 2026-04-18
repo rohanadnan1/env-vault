@@ -18,7 +18,7 @@ import Image from "next/image";
 
 interface TwoFactorSetupProps {
   open: boolean;
-  onOpenChange: (open: boolean) => void;
+  onOpenChange: (val: boolean) => void;
   onSuccess: () => void;
 }
 
@@ -40,7 +40,8 @@ export function TwoFactorSetup({ open, onOpenChange, onSuccess }: TwoFactorSetup
       } else {
         toast.error("Failed to start 2FA setup");
       }
-    } catch (_err) {
+    } catch (err) {
+      console.error(err);
       toast.error("An error occurred during setup");
     } finally {
       setIsLoading(false);
@@ -67,7 +68,8 @@ export function TwoFactorSetup({ open, onOpenChange, onSuccess }: TwoFactorSetup
         const data = await res.json();
         toast.error(data.error || "Verification failed");
       }
-    } catch (_err) {
+    } catch (err) {
+      console.error(err);
       toast.error("Verification failed");
     } finally {
       setIsLoading(false);

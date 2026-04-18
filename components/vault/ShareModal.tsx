@@ -15,7 +15,6 @@ import { Label } from '@/components/ui/label';
 import { Switch } from '@/components/ui/switch';
 import { 
   Share2, 
-  Link as LinkIcon, 
   Copy, 
   Check, 
   ShieldCheck, 
@@ -73,7 +72,13 @@ export function ShareModal({
 
     try {
       // 1. Fetch secrets in scope
-      let secrets: unknown[] = [];
+      interface Secret {
+        keyName: string;
+        environmentId: string;
+        valueEncrypted: string;
+        iv: string;
+      }
+      let secrets: Secret[] = [];
 
       if (scopeType === 'ENV') {
         const res = await fetch(`/api/secrets?envId=${scopeId}`);
@@ -89,7 +94,7 @@ export function ShareModal({
         const projectsRes = await fetch('/api/projects');
         if (!projectsRes.ok) throw new Error('Failed to fetch project data');
         const projects = await projectsRes.json();
-        const project = projects.find((p: unknown) => p.id === scopeId);
+        const project = projects.find((p: { id: string; environments?: { id: string }[] }) => p.id === scopeId);
         if (!project) throw new Error('Project not found');
         for (const env of project.environments ?? []) {
           const envRes = await fetch(`/api/secrets?envId=${env.id}`);
@@ -147,7 +152,7 @@ export function ShareModal({
       setShareUrl(shareData.url);
       setStep('result');
       toast.success('Share link generated!');
-    } catch (_err) {
+    } catch (err) {
       console.error(err);
       toast.error('Could not create share link');
     } finally {

@@ -14,6 +14,7 @@ import {
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
+import { Label } from '@/components/ui/label';
 import { Card, CardHeader, CardTitle, CardDescription, CardContent, CardFooter } from '@/components/ui/card';
 import { toast } from 'sonner';
 import { deriveKeyFromPassphrase, decryptShareBundle } from '@/lib/crypto/share';
@@ -71,7 +72,7 @@ export default function ShareRecipientPage({ params }: { params: Promise<{ token
       // 2. Decrypt Bundle
       const decryptedStr = await decryptShareBundle(data.bundleEncrypted, data.bundleIv, shareKey, token);
       
-      const parsed = JSON.parse(decryptedStr);
+      const parsed = JSON.parse(decryptedStr) as { keyName: string; plaintext: string; }[];
       setSecrets(parsed);
       toast.success('Bundle decrypted successfully');
     } catch (err) {
@@ -229,6 +230,3 @@ export default function ShareRecipientPage({ params }: { params: Promise<{ token
   );
 }
 
-function Label({ children, className, ...props }: unknown) {
-  return <label className={`text-sm font-semibold text-slate-700 ${className}`} {...props}>{children}</label>;
-}

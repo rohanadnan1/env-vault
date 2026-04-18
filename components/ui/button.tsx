@@ -45,7 +45,10 @@ function Button({
   variant = "default",
   size = "default",
   ...props
-}: ButtonPrimitive.Props & VariantProps<typeof buttonVariants>) {
+}: ButtonPrimitive.Props & {
+  variant?: "default" | "outline" | "secondary" | "ghost" | "destructive" | "link" | null;
+  size?: "default" | "xs" | "sm" | "lg" | "icon" | "icon-xs" | "icon-sm" | "icon-lg" | null;
+}) {
   return (
     <ButtonPrimitive
       data-slot="button"

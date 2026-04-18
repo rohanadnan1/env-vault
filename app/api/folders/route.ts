@@ -19,7 +19,10 @@ export async function GET(req: Request) {
     const tree = await getFolderTree(environmentId, session.user.id);
     return NextResponse.json(tree);
   } catch (err) {
-    return NextResponse.json({ error: err.message }, { status: 404 });
+    if (err instanceof Error) {
+      return NextResponse.json({ error: err.message }, { status: 404 });
+    }
+    return NextResponse.json({ error: 'Failed to get folder tree' }, { status: 404 });
   }
 }
 
@@ -62,7 +65,7 @@ export async function POST(req: Request) {
 
     return NextResponse.json(folder, { status: 201 });
   } catch (e) {
-    if (e instanceof z.ZodError) return NextResponse.json({ error: e.issues[0].message }, { status: 400 });
+    if (e instanceof z.ZodError) return NextResponse.json({ error: (e as z.ZodError).issues[0].message }, { status: 400 });
     return NextResponse.json({ error: 'Internal Server Error' }, { status: 500 });
   }
 }

@@ -122,7 +122,8 @@ export function ImportModal({
           updatedResults[i].status = errData.error?.includes('unique constraint') ? 'duplicate' : 'error';
           updatedResults[i].error = errData.error || 'Failed';
         }
-      } catch (_err) {
+      } catch (err) {
+        console.error(err);
         updatedResults[i].status = 'error';
         updatedResults[i].error = 'Encryption failed';
       }
@@ -224,6 +225,6 @@ export function ImportModal({
   );
 }
 
-function Badge({ children, className, variant }: unknown) {
-  return <span className={`px-2 py-0.5 rounded-full text-xs font-medium ${className}`}>{children}</span>;
+function Badge({ children, className }: { children: React.ReactNode; className?: string; variant?: string }) {
+  return <span className={`px-2 py-0.5 rounded-full text-[10px] font-bold ${className}`}>{children}</span>;
 }
