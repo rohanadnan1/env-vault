@@ -52,7 +52,7 @@ export function CreateEnvironmentModal({
       setName('');
       onOpenChange(false);
       router.refresh();
-    } catch (err: unknown) {
+    } catch (err) {
       toast.error(err.message);
     } finally {
       setIsLoading(false);
