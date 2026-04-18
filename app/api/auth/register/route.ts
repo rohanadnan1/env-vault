@@ -38,6 +38,7 @@ export async function POST(req: Request) {
       const zodError = error as z.ZodError;
       return NextResponse.json({ error: zodError.issues[0].message }, { status: 400 });
     }
-    return NextResponse.json({ error: 'Internal server error' }, { status: 500 });
+    console.error('[REGISTER_ERROR]', error);
+    return NextResponse.json({ error: 'Internal server error: ' + (error as Error).message }, { status: 500 });
   }
 }
