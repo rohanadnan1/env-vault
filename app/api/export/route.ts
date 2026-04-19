@@ -15,8 +15,9 @@ import { db } from '@/lib/db';
  *   scope: string,
  *   environments: [{
  *     id, name,
- *     folders: [{ id, name, secrets: [{id, keyName, valueEncrypted, iv}] }],
- *     rootSecrets: [{id, keyName, valueEncrypted, iv}]
+ *     folders: [{ id, name, secrets: [{id, keyName, valueEncrypted, iv}], vaultFiles: [{id, name, contentEncrypted, iv}] }],
+ *     rootSecrets: [{id, keyName, valueEncrypted, iv}],
+ *     rootFiles: [{id, name, contentEncrypted, iv}]
  *   }]
  * }
  */
@@ -51,6 +52,7 @@ export async function GET(req: Request) {
         where: { id: folderId },
         include: {
           secrets: { orderBy: { keyName: 'asc' }, select: { id: true, keyName: true, valueEncrypted: true, iv: true } },
+          vaultFiles: { orderBy: { name: 'asc' }, select: { id: true, name: true, contentEncrypted: true, iv: true } },
         },
       });
       if (!folder || folder.environmentId !== environmentId) {
@@ -63,8 +65,9 @@ export async function GET(req: Request) {
         environments: [{
           id: env.id,
           name: env.name,
-          folders: [{ id: folder.id, name: folder.name, secrets: folder.secrets }],
+          folders: [{ id: folder.id, name: folder.name, secrets: folder.secrets, vaultFiles: folder.vaultFiles }],
           rootSecrets: [],
+          rootFiles: [],
         }],
       });
     }
@@ -82,6 +85,7 @@ export async function GET(req: Request) {
           folders: {
             include: {
               secrets: { orderBy: { keyName: 'asc' }, select: { id: true, keyName: true, valueEncrypted: true, iv: true } },
+              vaultFiles: { orderBy: { name: 'asc' }, select: { id: true, name: true, contentEncrypted: true, iv: true } },
             },
             orderBy: { name: 'asc' },
           },
@@ -89,6 +93,11 @@ export async function GET(req: Request) {
             where: { folderId: null },
             orderBy: { keyName: 'asc' },
             select: { id: true, keyName: true, valueEncrypted: true, iv: true },
+          },
+          vaultFiles: {
+            where: { folderId: null },
+            orderBy: { name: 'asc' },
+            select: { id: true, name: true, contentEncrypted: true, iv: true },
           },
         },
       });
@@ -103,8 +112,9 @@ export async function GET(req: Request) {
         environments: [{
           id: env.id,
           name: env.name,
-          folders: env.folders.map(f => ({ id: f.id, name: f.name, secrets: f.secrets })),
+          folders: env.folders.map(f => ({ id: f.id, name: f.name, secrets: f.secrets, vaultFiles: f.vaultFiles })),
           rootSecrets: env.secrets,
+          rootFiles: env.vaultFiles,
         }],
       });
     }
@@ -122,6 +132,7 @@ export async function GET(req: Request) {
               folders: {
                 include: {
                   secrets: { orderBy: { keyName: 'asc' }, select: { id: true, keyName: true, valueEncrypted: true, iv: true } },
+                  vaultFiles: { orderBy: { name: 'asc' }, select: { id: true, name: true, contentEncrypted: true, iv: true, folderId: true } },
                 },
                 orderBy: { name: 'asc' },
               },
@@ -129,6 +140,11 @@ export async function GET(req: Request) {
                 where: { folderId: null },
                 orderBy: { keyName: 'asc' },
                 select: { id: true, keyName: true, valueEncrypted: true, iv: true },
+              },
+              vaultFiles: {
+                where: { folderId: null },
+                orderBy: { name: 'asc' },
+                select: { id: true, name: true, contentEncrypted: true, iv: true, folderId: true },
               },
             },
             orderBy: { name: 'asc' },
@@ -146,8 +162,9 @@ export async function GET(req: Request) {
         environments: project.environments.map(env => ({
           id: env.id,
           name: env.name,
-          folders: env.folders.map(f => ({ id: f.id, name: f.name, secrets: f.secrets })),
+          folders: env.folders.map(f => ({ id: f.id, name: f.name, secrets: f.secrets, vaultFiles: f.vaultFiles })),
           rootSecrets: env.secrets,
+          rootFiles: env.vaultFiles,
         })),
       });
     }

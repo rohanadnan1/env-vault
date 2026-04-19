@@ -2,7 +2,7 @@
 
 import { useState, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
-import { Eye, EyeOff, Copy, Trash2, History, Check, AlertTriangle } from 'lucide-react';
+import { Eye, EyeOff, Copy, Trash2, History, Check, AlertTriangle, GripVertical } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { 
@@ -27,6 +27,7 @@ interface SecretRowProps {
   iv: string;
   tags?: string;
   environmentId: string;
+  folderId: string | null;
   onEdit?: () => void;
   onShowHistory?: () => void;
 }
@@ -44,6 +45,7 @@ export function SecretRow({
   iv,
   tags = "",
   environmentId,
+  folderId,
 }: SecretRowProps) {
   const router = useRouter();
   const [revealState, setRevealState] = useState<RevealState>({
@@ -174,8 +176,18 @@ export function SecretRow({
     }
   };
 
+  const handleDragStart = (e: React.DragEvent) => {
+    e.dataTransfer.effectAllowed = 'move';
+    e.dataTransfer.setData('application/envvault', JSON.stringify({ type: 'secret', id, sourceId: folderId }));
+  };
+
   return (
-    <div className="flex items-center justify-between p-3 border-b border-slate-100 hover:bg-slate-50/80 transition-colors group">
+    <div
+      draggable
+      onDragStart={handleDragStart}
+      className="flex items-center justify-between p-3 border-b border-slate-100 hover:bg-slate-50/80 transition-colors group"
+    >
+      <GripVertical className="w-4 h-4 text-slate-200 group-hover:text-slate-400 shrink-0 cursor-grab mr-1 transition-colors" />
       <div className="flex items-center gap-4 flex-1 min-w-0">
         <div className="flex flex-col min-w-0 w-full">
           <div className="flex items-center gap-2">

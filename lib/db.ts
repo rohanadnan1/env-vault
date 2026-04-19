@@ -20,26 +20,7 @@ export interface FolderNode {
   children: FolderNode[];
 }
 
-export async function getFolderTree(environmentId: string, userId: string) {
-  // Verify ownership via environment -> project -> user
-  const env = await db.environment.findUnique({
-    where: { id: environmentId },
-    include: {
-      project: {
-        select: { userId: true }
-      }
-    }
-  });
-
-  if (!env || env.project.userId !== userId) {
-    throw new Error("Unauthorized or Environment not found");
-  }
-
-  const allFolders = await db.folder.findMany({
-    where: { environmentId },
-    orderBy: { createdAt: 'asc' }
-  });
-
+export function buildFolderTree(allFolders: { id: string; name: string; parentId: string | null; environmentId: string }[]): FolderNode[] {
   // Transform flat list to tree
   const folderMap = new Map<string, FolderNode>();
   const roots: FolderNode[] = [];
@@ -58,4 +39,23 @@ export async function getFolderTree(environmentId: string, userId: string) {
   });
 
   return roots;
+}
+
+/** Walk the parent chain of a folder and return ancestors ordered root → current */
+export function buildFolderAncestors(
+  folderId: string, 
+  allFolders: { id: string; name: string; parentId: string | null }[]
+): { id: string; name: string }[] {
+  const ancestors: { id: string; name: string }[] = [];
+  const folderMap = new Map(allFolders.map(f => [f.id, f]));
+
+  let id: string | null = folderId;
+  while (id) {
+    const f = folderMap.get(id);
+    if (!f) break;
+    ancestors.unshift({ id: f.id, name: f.name });
+    id = f.parentId;
+  }
+
+  return ancestors;
 }

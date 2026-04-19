@@ -1,6 +1,6 @@
 import { NextResponse } from 'next/server';
 import { auth } from '@/lib/auth';
-import { db, getFolderTree } from '@/lib/db';
+import { db, buildFolderTree } from '@/lib/db';
 import { CreateFolderSchema } from '@/lib/validations/schemas';
 import { z } from 'zod';
 
@@ -16,7 +16,21 @@ export async function GET(req: Request) {
   }
 
   try {
-    const tree = await getFolderTree(environmentId, session.user.id);
+    const env = await db.environment.findUnique({
+      where: { id: environmentId },
+      include: { project: { select: { userId: true } } }
+    });
+
+    if (!env || env.project.userId !== session.user.id) {
+      return NextResponse.json({ error: 'Unauthorized' }, { status: 403 });
+    }
+
+    const allFolders = await db.folder.findMany({
+      where: { environmentId },
+      orderBy: { createdAt: 'asc' }
+    });
+
+    const tree = buildFolderTree(allFolders);
     return NextResponse.json(tree);
   } catch (err) {
     if (err instanceof Error) {

@@ -17,6 +17,7 @@ export async function GET() {
     });
 
     if (!user) {
+      console.error('[VAULT_SALT] User not found in DB. Session userId:', userId);
       return NextResponse.json({ error: 'User not found' }, { status: 404 });
     }
 

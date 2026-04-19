@@ -1,46 +1,49 @@
 import { auth } from '@/lib/auth';
-import { db, getFolderTree } from '@/lib/db';
+import { db, buildFolderTree, buildFolderAncestors } from '@/lib/db';
+import { cache } from 'react';
 import { notFound } from 'next/navigation';
 import { VaultStructureView } from '@/components/vault/VaultStructureView';
 import { ClientFolderSelector } from './ClientFolderSelector';
 import { ClientFolderActions } from './ClientFolderActions';
 import { Database } from 'lucide-react';
 
-async function getData(projectId: string, envId: string, folderId?: string, userId?: string) {
-  const project = await db.project.findUnique({
+const getProject = cache(async (projectId: string, userId: string) => {
+  return await db.project.findUnique({
     where: { id: projectId, userId },
     include: { environments: true }
   });
+});
 
+async function getData(projectId: string, envId: string, folderId?: string, userId?: string) {
+  if (!userId) return null;
+
+  const project = await getProject(projectId, userId);
   if (!project) return null;
 
   const environment = project.environments.find(e => e.id === envId);
   if (!environment) return null;
 
-  const folderTree = await getFolderTree(envId, userId!);
-  
-  const secrets = await db.secret.findMany({
-    where: {
-      environmentId: envId,
-      folderId: folderId || null
-    },
-    orderBy: { keyName: 'asc' }
-  });
+  // Execute all heavy operations in parallel
+  const [allFolders, secrets, files, currentFolder] = await Promise.all([
+    db.folder.findMany({
+      where: { environmentId: envId },
+      orderBy: { createdAt: 'asc' }
+    }),
+    db.secret.findMany({
+      where: { environmentId: envId, folderId: folderId || null },
+      orderBy: { keyName: 'asc' }
+    }),
+    db.vaultFile.findMany({
+      where: { environmentId: envId, folderId: folderId || null },
+      orderBy: { name: 'asc' }
+    }),
+    folderId ? db.folder.findUnique({ where: { id: folderId } }) : Promise.resolve(null)
+  ]);
 
-  const files = await db.vaultFile.findMany({
-    where: {
-      environmentId: envId,
-      folderId: folderId || null
-    },
-    orderBy: { name: 'asc' }
-  });
+  const folderTree = buildFolderTree(allFolders);
+  const breadcrumbs = folderId ? buildFolderAncestors(folderId, allFolders) : [];
 
-  let currentFolder = null;
-  if (folderId) {
-    currentFolder = await db.folder.findUnique({ where: { id: folderId } });
-  }
-
-  return { project, environment, folderTree, secrets, files, currentFolder };
+  return { project, environment, folderTree, secrets, files, currentFolder, breadcrumbs };
 }
 
 export default async function EnvPage({ 
@@ -56,7 +59,7 @@ export default async function EnvPage({
 
   if (!data) notFound();
 
-  const { project, environment, folderTree, secrets, files, currentFolder } = data;
+  const { project, environment, folderTree, secrets, files, currentFolder, breadcrumbs } = data;
 
   return (
     <div className="h-[calc(100vh-140px)] flex bg-white border border-slate-200 rounded-xl overflow-hidden shadow-sm">
@@ -82,11 +85,13 @@ export default async function EnvPage({
       {/* Pane 2: Main Content Area (Now a Client Component for Search) */}
       <VaultStructureView 
         project={project}
+        projectId={projectId}
         environment={environment}
+        envId={envId}
+        breadcrumbs={breadcrumbs}
         currentFolder={currentFolder}
         secrets={secrets}
         files={files}
-        envId={envId}
         folderId={folderId || null}
       />
     </div>
