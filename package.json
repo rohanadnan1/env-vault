@@ -7,6 +7,8 @@
     "build": "prisma generate && next build",
     "start": "next start",
     "lint": "eslint",
+    "migrate:variables-to-env:dry-run": "tsx scripts/migrate-variables-to-env.ts --dry-run",
+    "migrate:variables-to-env": "tsx scripts/migrate-variables-to-env.ts",
     "postinstall": "prisma generate"
   },
   "dependencies": {

@@ -154,7 +154,14 @@ export function VaultStructureView({
             scopedSecretsCount={filteredSecrets.length}
             scopedFiles={filteredFiles}
           />
-          <ClientSecretActions environmentId={envId} folderId={folderId || null} />
+          <ClientSecretActions
+            projectId={projectId}
+            environmentId={envId}
+            folderId={folderId || null}
+            currentFolderName={currentFolder?.name || null}
+            currentFolderDepth={breadcrumbs.length}
+            secretsForCopy={optimisticSecrets}
+          />
         </div>
       </div>
 

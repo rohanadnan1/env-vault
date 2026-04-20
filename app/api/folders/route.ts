@@ -2,6 +2,7 @@ import { NextResponse } from 'next/server';
 import { auth } from '@/lib/auth';
 import { db, buildFolderTree } from '@/lib/db';
 import { CreateFolderSchema } from '@/lib/validations/schemas';
+import { isVariablesFolderName } from '@/lib/variables-folder';
 import { z } from 'zod';
 
 export async function GET(req: Request) {
@@ -62,11 +63,17 @@ export async function POST(req: Request) {
     if (data.parentId) {
       const parent = await db.folder.findUnique({
         where: { id: data.parentId },
-        select: { environmentId: true }
+        select: { environmentId: true, name: true }
       });
       if (!parent || parent.environmentId !== data.environmentId) {
         return NextResponse.json({ error: 'Invalid parent folder' }, { status: 400 });
       }
+
+      if (isVariablesFolderName(parent.name)) {
+        return NextResponse.json({ error: 'Cannot create subfolders inside an env folder' }, { status: 400 });
+      }
+    } else if (isVariablesFolderName(data.name)) {
+      return NextResponse.json({ error: 'The root folder name "env" is reserved' }, { status: 400 });
     }
 
     const folder = await db.folder.create({

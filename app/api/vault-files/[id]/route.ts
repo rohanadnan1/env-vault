@@ -53,9 +53,43 @@ export async function PATCH(req: Request, { params }: { params: Promise<{ id: st
     const body = await req.json();
     const data = UpdateVaultFileSchema.parse(body);
 
-    const updated = await db.vaultFile.update({
-      where: { id },
-      data,
+    const updated = await db.$transaction(async (tx) => {
+      const latestHistory = await tx.fileHistory.findFirst({
+        where: { fileId: id },
+        orderBy: { revisionNumber: 'desc' },
+      });
+
+      const res = await tx.vaultFile.update({
+        where: { id },
+        data,
+      });
+
+      await tx.fileHistory.create({
+        data: {
+          fileId: id,
+          name: res.name,
+          contentEncrypted: res.contentEncrypted,
+          iv: res.iv,
+          revisionNumber: (latestHistory?.revisionNumber ?? 0) + 1,
+          previousHistoryId: latestHistory?.id ?? null,
+        },
+      });
+
+      const allRevisions = await tx.fileHistory.findMany({
+        where: { fileId: id },
+        orderBy: { revisionNumber: 'desc' },
+        select: { id: true },
+      });
+
+      if (allRevisions.length > 10) {
+        await tx.fileHistory.deleteMany({
+          where: {
+            id: { in: allRevisions.slice(10).map((rev) => rev.id) },
+          },
+        });
+      }
+
+      return res;
     });
 
     return NextResponse.json(updated);

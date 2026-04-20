@@ -1,6 +1,7 @@
 import { NextResponse } from 'next/server';
 import { auth } from '@/lib/auth';
 import { db } from '@/lib/db';
+import { resolveSecretTargetFolder } from '@/lib/variables-folder';
 import { z } from 'zod';
 
 const MoveSchema = z.object({
@@ -30,22 +31,20 @@ export async function PATCH(req: Request, { params }: { params: Promise<{ id: st
     const body = await req.json();
     const { folderId } = MoveSchema.parse(body);
 
-    // Verify target folder belongs to same environment (if provided)
-    if (folderId) {
-      const folder = await db.folder.findUnique({
-        where: { id: folderId },
-        select: { environmentId: true },
-      });
-      if (!folder || folder.environmentId !== secret.environmentId) {
-        return NextResponse.json({ error: 'Invalid target folder' }, { status: 400 });
-      }
+    if (!folderId) {
+      return NextResponse.json(
+        { error: 'Secrets must stay inside an env folder and cannot be moved to root.' },
+        { status: 400 }
+      );
     }
+
+    const placement = await resolveSecretTargetFolder(db, secret.environmentId, folderId);
 
     // Check for key name collision in target scope
     const conflict = await db.secret.findFirst({
       where: {
         environmentId: secret.environmentId,
-        folderId: folderId,
+        folderId: placement.targetFolderId,
         keyName: secret.keyName,
         NOT: { id },
       },
@@ -60,11 +59,18 @@ export async function PATCH(req: Request, { params }: { params: Promise<{ id: st
 
     const updated = await db.secret.update({
       where: { id },
-      data: { folderId },
+      data: { folderId: placement.targetFolderId },
     });
 
-    return NextResponse.json(updated);
+    return NextResponse.json({
+      ...updated,
+      migratedToVariablesFolder: placement.migratedToVariablesFolder,
+      autoCreatedVariablesFolder: placement.autoCreatedVariablesFolder,
+    });
   } catch (e) {
+    if (e instanceof Error && e.message === 'Invalid folder') {
+      return NextResponse.json({ error: 'Invalid target folder' }, { status: 400 });
+    }
     if (e instanceof z.ZodError) {
       return NextResponse.json({ error: (e as z.ZodError).issues[0].message }, { status: 400 });
     }

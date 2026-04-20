@@ -96,7 +96,13 @@ model SecretHistory {
   secret        Secret   @relation(fields: [secretId], references: [id], onDelete: Cascade)
   valueEncrypted String
   iv            String
+  revisionNumber Int      @default(1)
+  previousHistoryId String?
+  previousHistory SecretHistory? @relation("SecretHistoryGraph", fields: [previousHistoryId], references: [id], onDelete: SetNull)
+  nextVersions  SecretHistory[] @relation("SecretHistoryGraph")
   createdAt     DateTime @default(now())
+
+  @@index([secretId, createdAt])
 }
  
 model VaultFile {
@@ -111,6 +117,24 @@ model VaultFile {
   folder         Folder?  @relation(fields: [folderId], references: [id])
   createdAt      DateTime @default(now())
   updatedAt      DateTime @updatedAt
+
+  history        FileHistory[]
+}
+
+model FileHistory {
+  id               String   @id @default(cuid())
+  fileId           String
+  file             VaultFile @relation(fields: [fileId], references: [id], onDelete: Cascade)
+  name             String
+  contentEncrypted String
+  iv               String
+  revisionNumber   Int      @default(1)
+  previousHistoryId String?
+  previousHistory  FileHistory? @relation("FileHistoryGraph", fields: [previousHistoryId], references: [id], onDelete: SetNull)
+  nextVersions     FileHistory[] @relation("FileHistoryGraph")
+  createdAt        DateTime @default(now())
+
+  @@index([fileId, createdAt])
 }
  
 model Share {

@@ -1,6 +1,7 @@
 import { NextResponse } from 'next/server';
 import { auth } from '@/lib/auth';
 import { db } from '@/lib/db';
+import { isVariablesFolderName } from '@/lib/variables-folder';
 import { z } from 'zod';
 
 const MoveSchema = z.object({
@@ -27,6 +28,10 @@ export async function PATCH(req: Request, { params }: { params: Promise<{ id: st
     return NextResponse.json({ error: 'Not found or unauthorized' }, { status: 404 });
   }
 
+  if (isVariablesFolderName(folder.name)) {
+    return NextResponse.json({ error: 'Env folders cannot be moved' }, { status: 400 });
+  }
+
   try {
     const body = await req.json();
     const { parentId, environmentId } = MoveSchema.parse(body);
@@ -40,10 +45,13 @@ export async function PATCH(req: Request, { params }: { params: Promise<{ id: st
     if (parentId) {
       const parent = await db.folder.findUnique({
         where: { id: parentId },
-        select: { environmentId: true },
+        select: { environmentId: true, name: true },
       });
       if (!parent || parent.environmentId !== (environmentId || folder.environmentId)) {
         return NextResponse.json({ error: 'Invalid target folder' }, { status: 400 });
+      }
+      if (isVariablesFolderName(parent.name)) {
+        return NextResponse.json({ error: 'Cannot move folders into an env folder' }, { status: 400 });
       }
     }
 

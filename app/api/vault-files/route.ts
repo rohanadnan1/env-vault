@@ -2,6 +2,7 @@ import { NextResponse } from 'next/server';
 import { auth } from '@/lib/auth';
 import { db } from '@/lib/db';
 import { CreateVaultFileSchema } from '@/lib/validations/schemas';
+import { isVariablesFolderName } from '@/lib/variables-folder';
 import { z } from 'zod';
 
 export async function GET(req: Request) {
@@ -68,17 +69,38 @@ export async function POST(req: Request) {
         where: { id: data.folderId, environmentId: data.environmentId }
       });
       if (!folder) return NextResponse.json({ error: 'Invalid folder' }, { status: 400 });
+      if (isVariablesFolderName(folder.name)) {
+        return NextResponse.json(
+          { error: 'Files cannot be created inside an env folder' },
+          { status: 400 }
+        );
+      }
     }
 
-    const file = await db.vaultFile.create({
-      data: {
-        name: data.name,
-        contentEncrypted: data.contentEncrypted,
-        iv: data.iv,
-        mimeType: data.mimeType || 'text/plain',
-        environmentId: data.environmentId,
-        folderId: data.folderId || null,
-      },
+    const file = await db.$transaction(async (tx) => {
+      const created = await tx.vaultFile.create({
+        data: {
+          name: data.name,
+          contentEncrypted: data.contentEncrypted,
+          iv: data.iv,
+          mimeType: data.mimeType || 'text/plain',
+          environmentId: data.environmentId,
+          folderId: data.folderId || null,
+        },
+      });
+
+      await tx.fileHistory.create({
+        data: {
+          fileId: created.id,
+          name: created.name,
+          contentEncrypted: created.contentEncrypted,
+          iv: created.iv,
+          revisionNumber: 1,
+          previousHistoryId: null,
+        },
+      });
+
+      return created;
     });
 
     return NextResponse.json(file, { status: 201 });

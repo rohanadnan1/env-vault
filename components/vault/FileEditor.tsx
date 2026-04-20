@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback, useMemo } from 'react';
 import {
   Dialog,
   DialogContent,
@@ -13,8 +13,9 @@ import { encryptSecret } from '@/lib/crypto/encrypt';
 import { decryptSecret } from '@/lib/crypto/decrypt';
 import { useVaultStore } from '@/lib/store/vaultStore';
 import { toast } from 'sonner';
-import { FileText, Save, Maximize2, Minimize2, FileCode2, FileJson, FileImage, ShieldAlert, BookText, Code2, Database, X, Copy } from 'lucide-react';
+import { FileText, Save, Maximize2, Minimize2, FileCode2, FileJson, FileImage, ShieldAlert, BookText, Code2, Database, X, Copy, History } from 'lucide-react';
 import { cn } from '@/lib/utils';
+import { FileHistoryModal } from '@/components/vault/FileHistoryModal';
 
 // Syntax Highlighting
 import Editor from 'react-simple-code-editor';
@@ -140,6 +141,7 @@ export function FileEditor({
   const [isLoading, setIsLoading] = useState(false);
   const [isDecrypting, setIsDecrypting] = useState(false);
   const [isFullscreen, setIsFullscreen] = useState(true);
+  const [isHistoryOpen, setIsHistoryOpen] = useState(false);
   
   const derivedKey = useVaultStore((s) => s.derivedKey);
   const touchActivity = useVaultStore((s) => s.touchActivity);
@@ -236,11 +238,13 @@ export function FileEditor({
 
   const uiConfig = getFileTypeConfig(name);
   const EditorIcon = uiConfig.icon;
+  const editorLineCount = useMemo(() => Math.max(1, content.split('\n').length), [content]);
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent 
         showCloseButton={false}
+        resizable={false}
         className={cn(
           "transition-all duration-500 ease-in-out flex flex-col p-0 gap-0 overflow-hidden border-none focus:outline-none shadow-2xl",
           isFullscreen 
@@ -301,6 +305,17 @@ export function FileEditor({
             >
               {isFullscreen ? <Minimize2 className="w-4 h-4" /> : <Maximize2 className="w-4 h-4" />}
             </Button>
+            {initialData?.id && (
+              <Button
+                variant="outline"
+                size="icon"
+                onClick={() => setIsHistoryOpen(true)}
+                className="h-9 w-9 text-slate-500 hover:text-indigo-600 border-slate-200"
+                title="File revision history"
+              >
+                <History className="w-4 h-4" />
+              </Button>
+            )}
             <div className="w-px h-5 bg-slate-200 mx-1 hidden sm:block" />
             <Button 
               variant="secondary" 
@@ -343,18 +358,36 @@ export function FileEditor({
             </div>
           ) : (
             <div className="flex-1 overflow-auto bg-slate-50/10">
-              <Editor
-                value={content}
-                onValueChange={code => setContent(code)}
-                highlight={code => Prism.highlight(code, Prism.languages[getPrismLanguage(name)] || Prism.languages.clike, getPrismLanguage(name))}
-                padding={24}
-                style={{
-                  fontFamily: '"JetBrains Mono", "Fira Code", "Source Code Pro", monospace',
-                  fontSize: 13,
-                  minHeight: '100%',
-                }}
-                className="prism-editor"
-              />
+              <div className="min-h-full">
+                <div className="sticky top-0 z-10 grid grid-cols-[64px_1fr] bg-slate-100 border-b border-slate-200 text-[11px] font-semibold uppercase tracking-wide text-slate-600">
+                  <div className="px-2 py-1.5 border-r border-slate-200 text-right">Line</div>
+                  <div className="px-4 py-1.5">Content</div>
+                </div>
+
+                <div className="grid grid-cols-[64px_1fr]">
+                  <div className="border-r border-slate-200 bg-slate-50 text-right text-[11px] text-slate-500 font-mono py-6 px-2 select-none">
+                    {Array.from({ length: editorLineCount }, (_, idx) => (
+                      <div key={`editor-line-${idx + 1}`} className="h-5 leading-5">
+                        {idx + 1}
+                      </div>
+                    ))}
+                  </div>
+
+                  <Editor
+                    value={content}
+                    onValueChange={code => setContent(code)}
+                    highlight={code => Prism.highlight(code, Prism.languages[getPrismLanguage(name)] || Prism.languages.clike, getPrismLanguage(name))}
+                    padding={24}
+                    style={{
+                      fontFamily: '"JetBrains Mono", "Fira Code", "Source Code Pro", monospace',
+                      fontSize: 13,
+                      lineHeight: '20px',
+                      minHeight: '100%',
+                    }}
+                    className="prism-editor"
+                  />
+                </div>
+              </div>
             </div>
           )}
 
@@ -371,6 +404,17 @@ export function FileEditor({
           </div>
         </div>
       </DialogContent>
+
+      {initialData?.id && (
+        <FileHistoryModal
+          open={isHistoryOpen}
+          onOpenChange={setIsHistoryOpen}
+          fileId={initialData.id}
+          fileName={name || initialData.name}
+          environmentId={environmentId || ''}
+          folderId={folderId}
+        />
+      )}
     </Dialog>
   );
 }

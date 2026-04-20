@@ -19,6 +19,8 @@ import {
 } from '@/components/ui/dialog';
 import { Button } from '@/components/ui/button';
 import { FileEditor } from '@/components/vault/FileEditor';
+import { decryptSecret } from '@/lib/crypto/decrypt';
+import { useVaultStore } from '@/lib/store/vaultStore';
 import { toast } from 'sonner';
 
 interface VaultFile {
@@ -68,7 +70,10 @@ export function ClientFileList({
   const [isDeleteOpen, setIsDeleteOpen] = useState(false);
   const [fileToDelete, setFileToDelete] = useState<VaultFile | null>(null);
   const [isDeleting, setIsDeleting] = useState(false);
+  const [downloadingFileId, setDownloadingFileId] = useState<string | null>(null);
   const router = useRouter();
+  const derivedKey = useVaultStore((s) => s.derivedKey);
+  const touchActivity = useVaultStore((s) => s.touchActivity);
 
   const handleEdit = (file: VaultFile) => {
     setSelectedFile(file);
@@ -89,6 +94,46 @@ export function ClientFileList({
       toast.error('Could not delete file');
     } finally {
       setIsDeleting(false);
+    }
+  };
+
+  const triggerDownload = (blob: Blob, filename: string) => {
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = filename;
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+    URL.revokeObjectURL(url);
+  };
+
+  const handleDownload = async (file: VaultFile) => {
+    if (!derivedKey) {
+      toast.error('Vault is locked');
+      return;
+    }
+
+    setDownloadingFileId(file.id);
+    touchActivity();
+    try {
+      let decrypted: string;
+      try {
+        const aad = `${file.name}:${environmentId}`;
+        decrypted = await decryptSecret(file.contentEncrypted, file.iv, derivedKey, aad);
+      } catch {
+        if (!folderId) throw new Error('Decryption failed');
+        const fallbackAad = `${file.name}:${folderId}`;
+        decrypted = await decryptSecret(file.contentEncrypted, file.iv, derivedKey, fallbackAad);
+      }
+
+      const blob = new Blob([decrypted], { type: file.mimeType || 'text/plain' });
+      triggerDownload(blob, file.name);
+      toast.success(`Downloaded ${file.name}`);
+    } catch {
+      toast.error('Failed to download file');
+    } finally {
+      setDownloadingFileId(null);
     }
   };
 
@@ -151,9 +196,19 @@ export function ClientFileList({
                 <DropdownMenuItem
                   onClick={(e) => {
                     e.stopPropagation();
+                    handleDownload(file);
                   }}
+                  disabled={downloadingFileId === file.id}
                 >
-                  <Download className="w-3.5 h-3.5 mr-2" /> Download
+                  {downloadingFileId === file.id ? (
+                    <>
+                      <Loader2 className="w-3.5 h-3.5 mr-2 animate-spin" /> Downloading...
+                    </>
+                  ) : (
+                    <>
+                      <Download className="w-3.5 h-3.5 mr-2" /> Download File
+                    </>
+                  )}
                 </DropdownMenuItem>
                 <DropdownMenuItem 
                   className="text-rose-600 focus:text-rose-600" 

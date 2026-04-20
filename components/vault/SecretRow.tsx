@@ -2,7 +2,7 @@
 
 import { useState, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
-import { Eye, EyeOff, Copy, Trash2, History, Check, AlertTriangle, GripVertical } from 'lucide-react';
+import { Eye, EyeOff, Copy, Trash2, History, Check, AlertTriangle, GripVertical, Pencil } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { 
@@ -18,6 +18,7 @@ import { decryptSecret } from '@/lib/crypto/decrypt';
 import { useVaultStore } from '@/lib/store/vaultStore';
 import { toast } from 'sonner';
 import { SecretHistoryModal } from './SecretHistoryModal';
+import { SecretEditor } from './SecretEditor';
 import { cn } from '@/lib/utils';
 
 interface SecretRowProps {
@@ -58,6 +59,9 @@ export function SecretRow({
   const [isDeleteOpen, setIsDeleteOpen] = useState(false);
   const [isCopied, setIsCopied] = useState(false);
   const [isHistoryOpen, setIsHistoryOpen] = useState(false);
+  const [isEditorOpen, setIsEditorOpen] = useState(false);
+  const [isPreparingEdit, setIsPreparingEdit] = useState(false);
+  const [editPlaintext, setEditPlaintext] = useState('');
   
   const derivedKey = useVaultStore((s) => s.derivedKey);
   const touchActivity = useVaultStore((s) => s.touchActivity);
@@ -176,6 +180,27 @@ export function SecretRow({
     }
   };
 
+  const handleEdit = async () => {
+    if (!derivedKey) {
+      toast.error('Vault is locked');
+      return;
+    }
+
+    setIsPreparingEdit(true);
+    touchActivity();
+    try {
+      const aad = `${keyName}:${environmentId}`;
+      const decrypted = await decryptSecret(valueEncrypted, iv, derivedKey, aad);
+      setEditPlaintext(decrypted);
+      setIsEditorOpen(true);
+    } catch (err) {
+      console.error('[SecretRow] Failed to prepare edit:', err);
+      toast.error('Could not prepare variable for editing');
+    } finally {
+      setIsPreparingEdit(false);
+    }
+  };
+
   const handleDragStart = (e: React.DragEvent) => {
     e.dataTransfer.effectAllowed = 'move';
     e.dataTransfer.setData('application/envvault', JSON.stringify({ type: 'secret', id, sourceId: folderId }));
@@ -249,6 +274,21 @@ export function SecretRow({
           {isCopied ? <Check className="w-4 h-4" /> : <Copy className="w-4 h-4" />}
         </Button>
 
+        <Button
+          variant="ghost"
+          size="icon"
+          className="h-8 w-8 text-slate-400 hover:text-indigo-600 hover:bg-slate-100"
+          onClick={handleEdit}
+          disabled={isPreparingEdit}
+          title="Edit variable"
+        >
+          {isPreparingEdit ? (
+            <div className="w-4 h-4 border-2 border-indigo-600/30 border-t-indigo-600 rounded-full animate-spin" />
+          ) : (
+            <Pencil className="w-4 h-4" />
+          )}
+        </Button>
+
         <Button 
           variant="ghost" 
           size="icon" 
@@ -311,6 +351,24 @@ export function SecretRow({
         secretId={id}
         keyName={keyName}
         environmentId={environmentId}
+      />
+
+      <SecretEditor
+        open={isEditorOpen}
+        onOpenChange={(open) => {
+          setIsEditorOpen(open);
+          if (!open) setEditPlaintext('');
+        }}
+        environmentId={environmentId}
+        folderId={folderId}
+        initialData={{
+          id,
+          keyName,
+          plaintext: editPlaintext,
+        }}
+        onSuccess={() => {
+          router.refresh();
+        }}
       />
     </div>
   );

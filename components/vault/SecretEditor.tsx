@@ -6,7 +6,6 @@ import {
   DialogContent,
   DialogHeader,
   DialogTitle,
-  DialogFooter,
   DialogDescription,
 } from '@/components/ui/dialog';
 import { Button } from '@/components/ui/button';
@@ -22,7 +21,12 @@ interface SecretEditorProps {
   onOpenChange: (open: boolean) => void;
   environmentId: string;
   folderId: string | null;
-  onSuccess: () => void;
+  onSuccess: (savedSecret?: {
+    id: string;
+    folderId: string | null;
+    migratedToVariablesFolder?: boolean;
+    autoCreatedVariablesFolder?: boolean;
+  }) => void;
   initialData?: {
     id: string;
     keyName: string;
@@ -88,8 +92,10 @@ export function SecretEditor({
         throw new Error(err.error || 'Failed to save secret');
       }
 
+      const savedSecret = await res.json();
+
       toast.success(initialData?.id ? 'Secret updated' : 'Secret created');
-      onSuccess();
+      onSuccess(savedSecret);
       onOpenChange(false);
     } catch (err) {
       if (err instanceof Error) {
@@ -104,15 +110,15 @@ export function SecretEditor({
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="sm:max-w-[500px]">
+      <DialogContent className="sm:max-w-[560px]">
         <DialogHeader>
-          <DialogTitle>{initialData?.id ? 'Edit Secret' : 'Add New Secret'}</DialogTitle>
+          <DialogTitle className="text-lg font-semibold">{initialData?.id ? 'Edit Secret' : 'Add New Secret'}</DialogTitle>
           <DialogDescription>
             Secrets are encrypted in your browser before being stored.
           </DialogDescription>
         </DialogHeader>
-        <form onSubmit={handleSave} className="space-y-4 py-4">
-          <div className="space-y-2">
+        <form onSubmit={handleSave} className="space-y-5 py-3">
+          <div className="space-y-2.5">
             <Label htmlFor="keyName">Key Name</Label>
             <Input
               id="keyName"
@@ -121,12 +127,12 @@ export function SecretEditor({
               onChange={(e) => setKeyName(e.target.value.toUpperCase().replace(/\s+/g, '_').replace(/[^A-Z0-9_]/g, ''))}
               required
               disabled={isLoading || !!initialData?.id}
-              className="font-mono"
+              className="font-mono h-10"
             />
             <p className="text-[10px] text-slate-400 font-medium">UPPERCASE, digits, and underscores only</p>
           </div>
           
-          <div className="space-y-2">
+          <div className="space-y-2.5">
             <Label htmlFor="value">Value</Label>
             <Textarea
               id="value"
@@ -135,19 +141,19 @@ export function SecretEditor({
               onChange={(e) => setValue(e.target.value)}
               required
               disabled={isLoading}
-              rows={4}
-              className="font-mono text-sm"
+              rows={6}
+              className="font-mono text-sm min-h-[150px]"
             />
           </div>
 
-          <DialogFooter className="pt-4">
-            <Button variant="ghost" type="button" onClick={() => onOpenChange(false)} disabled={isLoading}>
+          <div className="pt-4 border-t border-slate-100 flex items-center justify-end gap-2">
+            <Button variant="ghost" type="button" onClick={() => onOpenChange(false)} disabled={isLoading} className="border border-slate-200">
               Cancel
             </Button>
             <Button type="submit" disabled={isLoading || !keyName || !value}>
               {isLoading ? "Encrypting & Saving..." : initialData?.id ? "Update Secret" : "Save Secret"}
             </Button>
-          </DialogFooter>
+          </div>
         </form>
       </DialogContent>
     </Dialog>

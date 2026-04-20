@@ -369,14 +369,8 @@ export function ExportButton({
           setIsExporting(null); return;
         }
 
-        if (matching.length === 1) {
-          const blob = new Blob([matching[0].content], { type: 'text/plain' });
-          const basename = matching[0].name.split('/').pop() || `download.${targetExtension}`;
-          triggerDownload(URL.createObjectURL(blob), basename);
-        } else {
-          const zip = buildZip(matching);
-          triggerDownload(URL.createObjectURL(zip), `export-${targetExtension}-bundle.zip`);
-        }
+        const zip = buildZip(matching);
+        triggerDownload(URL.createObjectURL(zip), `export-${targetExtension}-bundle.zip`);
         setIsExporting(null);
         return;
       }
@@ -435,7 +429,7 @@ export function ExportButton({
                   onClick={() => runExport('folder', 'extension', ext)}
                 >
                   <FileText className="w-4 h-4 mr-2 text-indigo-400" />
-                  Download as .{ext}
+                  Download all .{ext} files (.zip)
                 </DropdownMenuItem>
               ))
             ) : (
@@ -464,6 +458,20 @@ export function ExportButton({
               <Layers className="w-3 h-3 shrink-0" />
               <span>Environment —</span><span className="text-slate-600 font-semibold truncate">{environmentName || 'Current'}</span>
             </div>
+            {!hasFolder && dynamicExtensions.length > 0 && (
+              <>
+                {dynamicExtensions.map(ext => (
+                  <DropdownMenuItem
+                    key={`env-${ext}`}
+                    className="cursor-pointer pl-5"
+                    onClick={() => runExport('environment', 'extension', ext)}
+                  >
+                    <FileText className="w-4 h-4 mr-2 text-green-500" />
+                    Download all .{ext} files (.zip)
+                  </DropdownMenuItem>
+                ))}
+              </>
+            )}
             <DropdownMenuItem
               className="cursor-pointer pl-5"
               onClick={() => runExport('environment', 'env')}

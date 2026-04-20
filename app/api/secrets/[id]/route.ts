@@ -36,18 +36,14 @@ export async function PATCH(req: Request, { params }: { params: Promise<{ id: st
     const body = await req.json();
     const data = UpdateSecretSchema.parse(body);
 
-    // Transaction to rotate history and update
+    // Transaction to append a linked revision after each edit.
     const updated = await db.$transaction(async (tx) => {
-      // 1. Save current state to history
-      await tx.secretHistory.create({
-        data: {
-          secretId: id,
-          valueEncrypted: secret.valueEncrypted,
-          iv: secret.iv,
-        }
+      const latestHistory = await tx.secretHistory.findFirst({
+        where: { secretId: id },
+        orderBy: { revisionNumber: 'desc' },
       });
 
-      // 2. Update the secret
+      // 1. Update the secret to the new encrypted value.
       const res = await tx.secret.update({
         where: { id },
         data: {
@@ -56,20 +52,16 @@ export async function PATCH(req: Request, { params }: { params: Promise<{ id: st
         }
       });
 
-      // 3. Prune history to latest 5 items
-      const history = await tx.secretHistory.findMany({
-        where: { secretId: id },
-        orderBy: { createdAt: 'desc' },
+      // 2. Add a new revision node linked to the previous revision.
+      await tx.secretHistory.create({
+        data: {
+          secretId: id,
+          valueEncrypted: data.valueEncrypted,
+          iv: data.iv,
+          revisionNumber: (latestHistory?.revisionNumber ?? 0) + 1,
+          previousHistoryId: latestHistory?.id ?? null,
+        }
       });
-
-      if (history.length > 5) {
-        const toDelete = history.slice(5);
-        await tx.secretHistory.deleteMany({
-          where: {
-            id: { in: toDelete.map(h => h.id) }
-          }
-        });
-      }
 
       return res;
     });

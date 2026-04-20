@@ -1,6 +1,7 @@
 import { NextResponse } from 'next/server';
 import { auth } from '@/lib/auth';
 import { db } from '@/lib/db';
+import { isVariablesFolderName } from '@/lib/variables-folder';
 import { z } from 'zod';
 
 const MoveSchema = z.object({
@@ -34,10 +35,16 @@ export async function PATCH(req: Request, { params }: { params: Promise<{ id: st
     if (folderId) {
       const folder = await db.folder.findUnique({
         where: { id: folderId },
-        select: { environmentId: true },
+        select: { environmentId: true, name: true },
       });
       if (!folder || folder.environmentId !== vaultFile.environmentId) {
         return NextResponse.json({ error: 'Invalid target folder' }, { status: 400 });
+      }
+      if (isVariablesFolderName(folder.name)) {
+        return NextResponse.json(
+          { error: 'Files cannot be moved into an env folder' },
+          { status: 400 }
+        );
       }
     }
 

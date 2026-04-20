@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useRef, useEffect, useTransition } from 'react';
+import { useState, useRef, useEffect, useTransition, useMemo } from 'react';
 import { useRouter } from 'next/navigation';
 import { FolderTree, type DragPayload } from '@/components/vault/FolderTree';
 import { type FolderNode } from '@/lib/db';
@@ -18,6 +18,7 @@ import { Button } from '@/components/ui/button';
 import { AlertTriangle, Database, Loader2 } from 'lucide-react';
 import { toast } from 'sonner';
 import { cn } from '@/lib/utils';
+import { ENV_FOLDER_NAME, isSystemFolderName } from '@/lib/system-folder';
 
 export function ClientFolderSelector({ 
   folderTree, 
@@ -34,6 +35,25 @@ export function ClientFolderSelector({
   const [isPending, startTransition] = useTransition();
 
   const [optimisticTree, setOptimisticTree] = useState(folderTree);
+
+  const sortedRootFolders = useMemo(() => {
+    const canonicalSystemFolders = optimisticTree.filter(
+      (folder) => folder.name.trim().toLowerCase() === ENV_FOLDER_NAME
+    );
+    const legacySystemFolders = optimisticTree.filter(
+      (folder) => isSystemFolderName(folder.name) && folder.name.trim().toLowerCase() !== ENV_FOLDER_NAME
+    );
+    const nonSystemFolders = optimisticTree.filter(
+      (folder) => !isSystemFolderName(folder.name)
+    );
+
+    return [...canonicalSystemFolders, ...legacySystemFolders, ...nonSystemFolders];
+  }, [optimisticTree]);
+
+  const pinnedRootFolderIds = useMemo(
+    () => sortedRootFolders.filter((folder) => isSystemFolderName(folder.name)).map((folder) => folder.id),
+    [sortedRootFolders]
+  );
 
   // Sync with server props
   useEffect(() => {
@@ -113,8 +133,25 @@ export function ClientFolderSelector({
     });
   };
 
+  const findFolderById = (nodes: FolderNode[], id: string): FolderNode | null => {
+    for (const node of nodes) {
+      if (node.id === id) return node;
+      const childMatch = findFolderById(node.children, id);
+      if (childMatch) return childMatch;
+    }
+    return null;
+  };
+
   /** Called by FolderItem or root drop zone when something is dropped */
   const handleDrop = async (payload: DragPayload, targetFolderId: string | null) => {
+    if (payload.type === 'file' && targetFolderId) {
+      const targetFolder = findFolderById(optimisticTree, targetFolderId);
+      if (targetFolder && isSystemFolderName(targetFolder.name)) {
+        toast.error(`Files cannot be moved into an ${ENV_FOLDER_NAME} folder.`);
+        return;
+      }
+    }
+
     try {
       // OPTIMISTIC UPDATE: Instant UI feedback
       if (payload.type === 'folder') {
@@ -243,8 +280,18 @@ export function ClientFolderSelector({
           {isRootDragOver ? "Drop to move to root" : "Root"}
         </div>
 
+        {pinnedRootFolderIds.length > 0 && (
+          <div className="mt-1.5 mb-1 px-2">
+            <div className="flex items-center gap-2 text-[10px] font-bold uppercase tracking-widest text-indigo-400">
+              <span>System</span>
+              <span className="h-px flex-1 bg-indigo-100" />
+            </div>
+          </div>
+        )}
+
         <FolderTree 
-          folders={optimisticTree} 
+          folders={sortedRootFolders} 
+          pinnedRootFolderIds={pinnedRootFolderIds}
           activeFolderId={activeFolderId}
           onSelect={(id) => {
             router.push(`/projects/${projectId}/${envId}/${id}`);

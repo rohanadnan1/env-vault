@@ -1,7 +1,7 @@
 "use client";
 
 import { useState, useRef } from 'react';
-import { ChevronRight, ChevronDown, Folder, FolderOpen, MoreVertical, Plus, Pencil, Trash2, GripVertical } from 'lucide-react';
+import { ChevronRight, ChevronDown, Folder, FolderOpen, MoreVertical, Plus, Pencil, Trash2, GripVertical, Lock, Pin } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { 
   DropdownMenu, 
@@ -10,6 +10,7 @@ import {
   DropdownMenuTrigger 
 } from '@/components/ui/dropdown-menu';
 import { type FolderNode } from '@/lib/db';
+import { isSystemFolderName } from '@/lib/system-folder';
 
 export type DragPayload =
   | { type: 'folder'; id: string }
@@ -19,6 +20,8 @@ export type DragPayload =
 interface FolderTreeProps {
   folders: FolderNode[];
   activeFolderId?: string;
+  level?: number;
+  pinnedRootFolderIds?: string[];
   onSelect: (id: string) => void;
   onCreateSubfolder?: (parentId: string) => void;
   onRename?: (id: string, name: string) => void;
@@ -30,6 +33,8 @@ interface FolderTreeProps {
 export function FolderTree({ 
   folders, 
   activeFolderId, 
+  level = 0,
+  pinnedRootFolderIds = [],
   onSelect, 
   onCreateSubfolder,
   onRename,
@@ -44,6 +49,8 @@ export function FolderTree({
           key={folder.id} 
           folder={folder} 
           activeFolderId={activeFolderId} 
+          level={level}
+          pinnedRootFolderIds={pinnedRootFolderIds}
           onSelect={onSelect}
           onCreateSubfolder={onCreateSubfolder}
           onRename={onRename}
@@ -59,6 +66,8 @@ export function FolderTree({
 function FolderItem({ 
   folder, 
   activeFolderId, 
+  level,
+  pinnedRootFolderIds,
   onSelect,
   onCreateSubfolder,
   onRename,
@@ -68,6 +77,8 @@ function FolderItem({
 }: { 
   folder: FolderNode; 
   activeFolderId?: string; 
+  level: number;
+  pinnedRootFolderIds: string[];
   onSelect: (id: string) => void;
   onCreateSubfolder?: (parentId: string) => void;
   onRename?: (id: string, name: string) => void;
@@ -80,6 +91,8 @@ function FolderItem({
   const dragCounter = useRef(0);
   const isActive = activeFolderId === folder.id;
   const hasChildren = folder.children && folder.children.length > 0;
+  const isVariablesFolder = isSystemFolderName(folder.name);
+  const isPinnedRootFolder = level === 0 && pinnedRootFolderIds.includes(folder.id);
 
   // ── Drag SOURCE (this folder being dragged) ──
   const handleDragStart = (e: React.DragEvent) => {
@@ -143,6 +156,7 @@ function FolderItem({
           isActive 
             ? "bg-indigo-50 text-indigo-700" 
             : "hover:bg-slate-100 text-slate-600",
+          isPinnedRootFolder && !isActive && "bg-indigo-50/40 text-indigo-700 border border-indigo-200/70 hover:bg-indigo-50",
           isDragOver && "ring-2 ring-indigo-400 ring-inset bg-indigo-50/60"
         )}
         onClick={() => onSelect(folder.id)}
@@ -166,8 +180,8 @@ function FolderItem({
           </button>
           
           {isOpen 
-            ? <FolderOpen className={cn("w-4 h-4 mr-2 shrink-0", isActive ? "text-indigo-600" : "text-slate-400")} /> 
-            : <Folder className={cn("w-4 h-4 mr-2 shrink-0", isActive ? "text-indigo-600" : "text-slate-400")} />
+            ? <FolderOpen className={cn("w-4 h-4 mr-2 shrink-0", isActive || isPinnedRootFolder ? "text-indigo-600" : "text-slate-400")} /> 
+            : <Folder className={cn("w-4 h-4 mr-2 shrink-0", isActive || isPinnedRootFolder ? "text-indigo-600" : "text-slate-400")} />
           }
           
           <span
@@ -180,6 +194,24 @@ function FolderItem({
           >
             {isDragOver ? "Drop to move to this folder" : folder.name}
           </span>
+
+            {isVariablesFolder && !isDragOver && (
+              <span
+                className="ml-1.5 inline-flex items-center justify-center rounded-md border border-amber-200 bg-amber-50 p-1 text-amber-700"
+                title="System folder for environment variables"
+              >
+                <Lock className="h-2.5 w-2.5" />
+              </span>
+            )}
+
+            {isPinnedRootFolder && !isDragOver && (
+              <span
+                className="ml-1.5 inline-flex items-center justify-center rounded-md border border-indigo-200 bg-indigo-50 p-1 text-indigo-700"
+                title="Pinned system folder"
+              >
+                <Pin className="h-2.5 w-2.5" />
+              </span>
+            )}
         </div>
 
         <div className={cn(
@@ -202,6 +234,7 @@ function FolderItem({
             />
             <DropdownMenuContent align="end" className="w-48">
               <DropdownMenuItem 
+                disabled={isVariablesFolder}
                 onClick={(e) => {
                   e.stopPropagation();
                   onCreateSubfolder?.(folder.id);
@@ -211,6 +244,7 @@ function FolderItem({
                 New Subfolder
               </DropdownMenuItem>
               <DropdownMenuItem 
+                disabled={isVariablesFolder}
                 onClick={(e) => {
                   e.stopPropagation();
                   onRename?.(folder.id, folder.name);
@@ -221,6 +255,7 @@ function FolderItem({
               </DropdownMenuItem>
               <DropdownMenuItem 
                 variant="destructive"
+                disabled={isVariablesFolder}
                 onClick={(e) => {
                   e.stopPropagation();
                   onDelete?.(folder.id, folder.name);
@@ -239,6 +274,8 @@ function FolderItem({
           <FolderTree 
             folders={folder.children} 
             activeFolderId={activeFolderId} 
+            level={level + 1}
+            pinnedRootFolderIds={pinnedRootFolderIds}
             onSelect={onSelect}
             onCreateSubfolder={onCreateSubfolder}
             onRename={onRename}

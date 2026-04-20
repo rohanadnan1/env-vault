@@ -27,9 +27,23 @@ export async function GET(_: Request, { params }: { params: Promise<{ id: string
 
   const history = await db.secretHistory.findMany({
     where: { secretId: id },
-    orderBy: { createdAt: 'desc' },
-    take: 5
+    orderBy: { revisionNumber: 'desc' },
+    select: {
+      id: true,
+      valueEncrypted: true,
+      iv: true,
+      revisionNumber: true,
+      previousHistoryId: true,
+      createdAt: true,
+    }
   });
 
-  return NextResponse.json(history);
+  const graph = {
+    nodes: history.map((h) => ({ id: h.id, revisionNumber: h.revisionNumber, createdAt: h.createdAt })),
+    edges: history
+      .filter((h) => Boolean(h.previousHistoryId))
+      .map((h) => ({ from: h.previousHistoryId as string, to: h.id })),
+  };
+
+  return NextResponse.json({ history, graph });
 }

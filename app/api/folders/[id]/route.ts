@@ -1,6 +1,7 @@
 import { NextResponse } from 'next/server';
 import { auth } from '@/lib/auth';
 import { db } from '@/lib/db';
+import { isVariablesFolderName } from '@/lib/variables-folder';
 import { z } from 'zod';
 
 const UpdateFolderSchema = z.object({
@@ -46,6 +47,10 @@ export async function PATCH(req: Request, { params }: { params: Promise<{ id: st
   const folder = await checkFolderOwnership(id, session.user.id);
   if (!folder) return NextResponse.json({ error: 'Not found or unauthorized' }, { status: 404 });
 
+  if (isVariablesFolderName(folder.name)) {
+    return NextResponse.json({ error: 'Env folders cannot be renamed' }, { status: 400 });
+  }
+
   try {
     const body = await req.json();
     const { name } = UpdateFolderSchema.parse(body);
@@ -69,6 +74,10 @@ export async function DELETE(_: Request, { params }: { params: Promise<{ id: str
 
   const folder = await checkFolderOwnership(id, session.user.id);
   if (!folder) return NextResponse.json({ error: 'Not found or unauthorized' }, { status: 404 });
+
+  if (isVariablesFolderName(folder.name)) {
+    return NextResponse.json({ error: 'Env folders cannot be deleted' }, { status: 400 });
+  }
 
   await db.folder.delete({ where: { id } });
   return NextResponse.json({ success: true });
