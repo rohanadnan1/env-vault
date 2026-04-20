@@ -36,8 +36,6 @@ export function ClientSecretActions({
           size="sm" 
           className="shadow-sm border-slate-200"
           onClick={() => setIsFileEditorOpen(true)}
-          disabled={!folderId}
-          title={!folderId ? "Select a folder to add files" : ""}
         >
           <FilePlus className="w-4 h-4 mr-2" /> New File
         </Button>
@@ -70,17 +68,15 @@ export function ClientSecretActions({
         }}
       />
 
-      {folderId && (
-        <FileEditor
-          open={isFileEditorOpen}
-          onOpenChange={setIsFileEditorOpen}
-          folderId={folderId}
-          environmentId={environmentId}
-          onSuccess={() => {
-            router.refresh();
-          }}
-        />
-      )}
+      <FileEditor
+        open={isFileEditorOpen}
+        onOpenChange={setIsFileEditorOpen}
+        folderId={folderId}
+        environmentId={environmentId}
+        onSuccess={() => {
+          router.refresh();
+        }}
+      />
     </>
   );
 }

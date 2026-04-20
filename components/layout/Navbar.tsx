@@ -8,12 +8,7 @@ export function Navbar() {
       <div className="font-semibold text-slate-800 md:hidden">
         env-vault
       </div>
-      <div className="font-medium text-slate-500 hidden md:flex items-center gap-4">
-       
-        <SearchBar />
-      </div>
-      
-      <div className="md:hidden">
+      <div className="font-medium text-slate-500 flex items-center gap-4">
         <SearchBar />
       </div>
       

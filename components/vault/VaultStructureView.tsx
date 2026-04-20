@@ -199,7 +199,7 @@ export function VaultStructureView({
             {filteredFiles.length > 0 && (
               <ClientFileList
                 files={filteredFiles as any}
-                folderId={folderId || ""}
+                folderId={folderId}
                 environmentId={envId}
               />
             )}

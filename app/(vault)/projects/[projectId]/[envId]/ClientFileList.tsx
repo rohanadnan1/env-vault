@@ -2,13 +2,22 @@
 
 import { useState } from 'react';
 import { useRouter } from 'next/navigation';
-import { FileText, MoreHorizontal, Trash2, Edit3, Download, GripVertical, FileCode2, FileJson, FileImage, ShieldAlert, BookText, Code2, Database } from 'lucide-react';
+import { FileText, MoreHorizontal, Trash2, Edit3, Download, GripVertical, FileCode2, FileJson, FileImage, ShieldAlert, BookText, Code2, Database, AlertTriangle, Loader2 } from 'lucide-react';
 import {
   DropdownMenu,
   DropdownMenuContent,
   DropdownMenuItem,
   DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu';
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from '@/components/ui/dialog';
+import { Button } from '@/components/ui/button';
 import { FileEditor } from '@/components/vault/FileEditor';
 import { toast } from 'sonner';
 
@@ -51,11 +60,14 @@ export function ClientFileList({
   environmentId
 }: {
   files: VaultFile[];
-  folderId: string;
+  folderId: string | null;
   environmentId: string;
 }) {
   const [selectedFile, setSelectedFile] = useState<VaultFile | null>(null);
   const [isEditorOpen, setIsEditorOpen] = useState(false);
+  const [isDeleteOpen, setIsDeleteOpen] = useState(false);
+  const [fileToDelete, setFileToDelete] = useState<VaultFile | null>(null);
+  const [isDeleting, setIsDeleting] = useState(false);
   const router = useRouter();
 
   const handleEdit = (file: VaultFile) => {
@@ -63,16 +75,20 @@ export function ClientFileList({
     setIsEditorOpen(true);
   };
 
-  const handleDelete = async (id: string) => {
-    if (!confirm('Are you sure you want to delete this file?')) return;
-
+  const handleDelete = async () => {
+    if (!fileToDelete) return;
+    setIsDeleting(true);
     try {
-      const res = await fetch(`/api/vault-files/${id}`, { method: 'DELETE' });
+      const res = await fetch(`/api/vault-files/${fileToDelete.id}`, { method: 'DELETE' });
       if (!res.ok) throw new Error('Delete failed');
       toast.success('File deleted');
+      setIsDeleteOpen(false);
+      setFileToDelete(null);
       router.refresh();
-    } catch (err) {
+    } catch {
       toast.error('Could not delete file');
+    } finally {
+      setIsDeleting(false);
     }
   };
 
@@ -124,15 +140,28 @@ export function ClientFileList({
                 }
               />
               <DropdownMenuContent align="end" className="w-40">
-                <DropdownMenuItem onClick={() => handleEdit(file)}>
+                <DropdownMenuItem
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    handleEdit(file);
+                  }}
+                >
                   <Edit3 className="w-3.5 h-3.5 mr-2" /> Edit Content
                 </DropdownMenuItem>
-                <DropdownMenuItem onClick={() => {}}>
+                <DropdownMenuItem
+                  onClick={(e) => {
+                    e.stopPropagation();
+                  }}
+                >
                   <Download className="w-3.5 h-3.5 mr-2" /> Download
                 </DropdownMenuItem>
                 <DropdownMenuItem 
                   className="text-rose-600 focus:text-rose-600" 
-                  onClick={() => handleDelete(file.id)}
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    setFileToDelete(file);
+                    setIsDeleteOpen(true);
+                  }}
                 >
                   <Trash2 className="w-3.5 h-3.5 mr-2" /> Delete
                 </DropdownMenuItem>
@@ -154,6 +183,57 @@ export function ClientFileList({
           }}
         />
       )}
+
+      <Dialog
+        open={isDeleteOpen}
+        onOpenChange={(open) => {
+          setIsDeleteOpen(open);
+          if (!open && !isDeleting) setFileToDelete(null);
+        }}
+      >
+        <DialogContent className="sm:max-w-[440px]">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2 text-rose-600 font-bold">
+              <AlertTriangle className="w-5 h-5" />
+              Delete File?
+            </DialogTitle>
+            <DialogDescription className="pt-2 text-slate-600 font-medium">
+              Are you sure you want to delete <span className="font-mono font-bold text-slate-900 bg-slate-100 px-1 rounded">{fileToDelete?.name}</span>?
+            </DialogDescription>
+            <p className="text-xs text-slate-400 pt-2 italic leading-relaxed">
+              This action cannot be undone.
+            </p>
+          </DialogHeader>
+          <DialogFooter className="pt-6 sm:justify-between gap-3">
+            <Button
+              variant="ghost"
+              onClick={() => {
+                setIsDeleteOpen(false);
+                setFileToDelete(null);
+              }}
+              disabled={isDeleting}
+              className="rounded-xl flex-1 border border-slate-200"
+            >
+              Cancel
+            </Button>
+            <Button
+              variant="destructive"
+              onClick={handleDelete}
+              disabled={isDeleting || !fileToDelete}
+              className="rounded-xl flex-1 font-bold shadow-lg shadow-rose-200"
+            >
+              {isDeleting ? (
+                <>
+                  <Loader2 className="w-4 h-4 mr-2 animate-spin" />
+                  Deleting...
+                </>
+              ) : (
+                'Delete Permanently'
+              )}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </>
   );
 }

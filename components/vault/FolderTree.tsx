@@ -170,10 +170,22 @@ function FolderItem({
             : <Folder className={cn("w-4 h-4 mr-2 shrink-0", isActive ? "text-indigo-600" : "text-slate-400")} />
           }
           
-          <span className="text-sm font-medium truncate">{folder.name}</span>
+          <span
+            className={cn(
+              "min-w-0",
+              isDragOver
+                ? "text-[9px] font-bold uppercase tracking-wide text-indigo-600 whitespace-normal break-words leading-tight"
+                : "text-sm font-medium truncate"
+            )}
+          >
+            {isDragOver ? "Drop to move to this folder" : folder.name}
+          </span>
         </div>
 
-        <div className="opacity-0 group-hover:opacity-100 transition-opacity flex items-center gap-0.5">
+        <div className={cn(
+          "transition-opacity flex items-center gap-0.5",
+          isDragOver ? "hidden" : "opacity-0 group-hover:opacity-100"
+        )}>
           {/* Drag handle visual affordance */}
           <GripVertical className="w-3 h-3 text-slate-300 cursor-grab" />
 

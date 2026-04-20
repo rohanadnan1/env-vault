@@ -1,7 +1,7 @@
 "use client";
 
 import * as React from "react";
-import { useRouter } from "next/navigation";
+import { usePathname, useRouter } from "next/navigation";
 import { SearchIcon, CommandIcon, Database, Folder, Shield } from "lucide-react";
 import {
   CommandDialog,
@@ -20,6 +20,7 @@ export function SearchBar() {
   const [results, setResults] = React.useState<any[]>([]);
   const [isLoading, setIsLoading] = React.useState(false);
   const router = useRouter();
+  const pathname = usePathname();
   
   const touchActivity = useVaultStore((s) => s.touchActivity);
 
@@ -35,6 +36,11 @@ export function SearchBar() {
     document.addEventListener("keydown", down);
     return () => document.removeEventListener("keydown", down);
   }, []);
+
+  // Always dismiss the command palette after navigation.
+  React.useEffect(() => {
+    setOpen(false);
+  }, [pathname]);
 
   // Search effect
   React.useEffect(() => {
@@ -144,10 +150,10 @@ export function SearchBar() {
           <CommandSeparator />
           
           <CommandGroup heading="Quick Actions">
-            <CommandItem onSelect={() => { setOpen(false); router.push('/dashboard'); }} className="cursor-pointer">
+            <CommandItem value="dashboard" onSelect={() => { setOpen(false); router.push('/dashboard'); }} className="cursor-pointer">
               Dashboard
             </CommandItem>
-            <CommandItem onSelect={() => { setOpen(false); router.push('/settings'); }} className="cursor-pointer">
+            <CommandItem value="account-settings" onSelect={() => { setOpen(false); router.push('/settings'); }} className="cursor-pointer">
               Account Settings
             </CommandItem>
           </CommandGroup>

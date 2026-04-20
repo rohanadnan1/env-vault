@@ -52,7 +52,7 @@ import 'prismjs/themes/prism.css';
 interface FileEditorProps {
   open: boolean;
   onOpenChange: (open: boolean) => void;
-  folderId: string;
+  folderId: string | null;
   environmentId?: string;
   onSuccess: () => void;
   initialData?: {
@@ -169,7 +169,7 @@ export function FileEditor({
     } finally {
       setIsDecrypting(false);
     }
-  }, [derivedKey, folderId]);
+  }, [derivedKey, environmentId, folderId]);
 
   useEffect(() => {
     if (open) {
@@ -194,6 +194,9 @@ export function FileEditor({
 
     try {
       const parentScopeId = environmentId || folderId;
+      if (!parentScopeId) {
+        throw new Error('Missing parent scope');
+      }
       const aad = `${name}:${parentScopeId}`;
       const { valueEncrypted, iv } = await encryptSecret(content, derivedKey, aad);
 
@@ -241,31 +244,31 @@ export function FileEditor({
         className={cn(
           "transition-all duration-500 ease-in-out flex flex-col p-0 gap-0 overflow-hidden border-none focus:outline-none shadow-2xl",
           isFullscreen 
-            ? "max-w-none w-screen h-screen rounded-none ring-0 m-0" 
-            : "sm:max-w-4xl h-[85vh] rounded-2xl ring-1 ring-slate-200"
+            ? "!top-0 !left-0 !h-dvh !w-screen !max-w-none !translate-x-0 !translate-y-0 rounded-none ring-0 !m-0"
+            : "!w-[min(96vw,72rem)] !max-w-[min(96vw,72rem)] h-[85vh] rounded-2xl ring-1 ring-slate-200"
         )}
       >
         <DialogTitle className="sr-only">
           {initialData?.id ? 'Edit File' : 'Create New File'}
         </DialogTitle>
         {/* Editor Toolbar */}
-        <div className="h-16 border-b border-slate-100 flex items-center justify-between px-6 bg-slate-50/80 backdrop-blur-sm shrink-0">
-          <div className="flex items-center gap-4 flex-1">
+        <div className="min-h-16 border-b border-slate-100 flex items-center justify-between px-3 sm:px-6 py-2 bg-slate-50/80 backdrop-blur-sm shrink-0 gap-2 flex-wrap">
+          <div className="flex items-center gap-3 sm:gap-4 flex-1 min-w-0 w-full sm:w-auto">
             <div className={cn(
               "p-2.5 rounded-xl border border-slate-200/60 shadow-sm transition-all duration-300",
               uiConfig.bgColor
             )}>
               <EditorIcon className={cn("w-5 h-5", uiConfig.textColor)} />
             </div>
-            <div className="flex flex-col gap-0.5">
+            <div className="flex flex-col gap-0.5 min-w-0">
               <Input
                 value={name}
                 onChange={(e) => setName(e.target.value)}
                 placeholder="new-file.js"
-                className="bg-transparent border-none shadow-none font-bold text-slate-900 focus-visible:ring-0 p-0 text-lg w-72 placeholder:text-slate-300 transition-all"
+                className="bg-transparent border-none shadow-none font-bold text-slate-900 focus-visible:ring-0 p-0 text-base sm:text-lg w-full sm:w-72 max-w-full placeholder:text-slate-300 transition-all"
                 disabled={isLoading}
               />
-              <div className="flex items-center gap-2">
+              <div className="flex items-center gap-2 flex-wrap">
                 <span className="text-[10px] font-bold tracking-widest uppercase text-slate-400">
                   {uiConfig.label}
                 </span>
@@ -279,11 +282,12 @@ export function FileEditor({
             </div>
           </div>
 
-          <div className="flex items-center gap-2 lg:gap-3">
+          <div className="flex items-center gap-2 lg:gap-3 shrink-0 w-full sm:w-auto justify-end">
             <Button 
               variant="outline" 
               size="icon" 
               onClick={copyToClipboard}
+              disabled={!content}
               className="h-9 w-9 text-slate-500 hover:text-indigo-600 border-slate-200"
               title="Copy Content"
             >
@@ -303,14 +307,14 @@ export function FileEditor({
               size="sm"
               onClick={() => onOpenChange(false)} 
               disabled={isLoading}
-              className="h-9 px-4 text-slate-600 bg-white border border-slate-200 hover:bg-slate-50 font-semibold text-xs"
+              className="h-9 px-3 sm:px-4 text-slate-600 bg-white border border-slate-200 hover:bg-slate-50 font-semibold text-xs"
             >
               Cancel
             </Button>
             <Button 
               onClick={handleSave} 
               disabled={isLoading || !name || isDecrypting} 
-              className="h-9 px-4 bg-indigo-600 hover:bg-indigo-700 shadow-lg shadow-indigo-500/20 font-semibold text-xs transition-all active:scale-95"
+              className="h-9 px-3 sm:px-4 bg-indigo-600 hover:bg-indigo-700 shadow-lg shadow-indigo-500/20 font-semibold text-xs transition-all active:scale-95"
             >
               {isLoading ? (
                 <div className="w-4 h-4 border-2 border-white/20 border-t-white rounded-full animate-spin mr-2" />

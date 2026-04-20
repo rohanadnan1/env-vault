@@ -55,6 +55,7 @@ export function ClientFolderSelector({
   // Root drop zone state
   const [isRootDragOver, setIsRootDragOver] = useState(false);
   const rootDragCounter = useRef(0);
+  const isRootActive = !activeFolderId;
 
   const handleDelete = async () => {
     if (!selectedFolderForAction) return;
@@ -210,44 +211,81 @@ export function ClientFolderSelector({
 
   return (
     <>
-      {/* Root-level drop zone (move to env root) */}
-      <div
-        onDragOver={handleRootDragOver}
-        onDragEnter={handleRootDragEnter}
-        onDragLeave={handleRootDragLeave}
-        onDrop={handleRootDrop}
-        className={cn(
-          "mb-1 px-2 py-1 rounded-md text-[10px] font-bold uppercase tracking-widest text-slate-400 flex items-center gap-1.5 transition-all",
-          isRootDragOver && "bg-indigo-50 ring-2 ring-indigo-400 ring-inset text-indigo-500"
-        )}
-      >
-        <Database className="w-3 h-3" />
-        {isRootDragOver ? "Drop to move to root" : "Root"}
-      </div>
+      <div className="min-h-full flex flex-col">
+        {/* Root-level drop zone (move to env root) */}
+        <div
+          role="button"
+          tabIndex={0}
+          onDragOver={handleRootDragOver}
+          onDragEnter={handleRootDragEnter}
+          onDragLeave={handleRootDragLeave}
+          onDrop={handleRootDrop}
+          onClick={() => {
+            router.push(`/projects/${projectId}/${envId}`);
+          }}
+          onKeyDown={(e) => {
+            if (e.key === 'Enter' || e.key === ' ') {
+              e.preventDefault();
+              router.push(`/projects/${projectId}/${envId}`);
+            }
+          }}
+          onMouseEnter={() => {
+            router.prefetch(`/projects/${projectId}/${envId}`);
+          }}
+          className={cn(
+            "mb-1 px-2 py-1 rounded-md text-[10px] font-bold uppercase tracking-widest text-slate-400 flex items-center gap-1.5 transition-all cursor-pointer select-none hover:text-indigo-600 hover:bg-slate-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-indigo-400 focus-visible:ring-offset-1",
+            isRootActive && "text-indigo-600 bg-indigo-50/70",
+            isRootDragOver && "bg-indigo-50 ring-2 ring-indigo-400 ring-inset text-indigo-500"
+          )}
+          aria-label="Go to root folder"
+        >
+          <Database className="w-3 h-3" />
+          {isRootDragOver ? "Drop to move to root" : "Root"}
+        </div>
 
-      <FolderTree 
-        folders={optimisticTree} 
-        activeFolderId={activeFolderId}
-        onSelect={(id) => {
-          router.push(`/projects/${projectId}/${envId}/${id}`);
-        }}
-        onPrefetch={(id) => {
-          router.prefetch(`/projects/${projectId}/${envId}/${id}`);
-        }}
-        onCreateSubfolder={(id) => {
-          setSelectedParentId(id);
-          setIsCreateOpen(true);
-        }}
-        onRename={(id, name) => {
-          setSelectedFolderForAction({ id, name });
-          setIsRenameOpen(true);
-        }}
-        onDelete={(id, name) => {
-          setSelectedFolderForAction({ id, name });
-          setIsDeleteOpen(true);
-        }}
-        onDrop={handleDrop}
-      />
+        <FolderTree 
+          folders={optimisticTree} 
+          activeFolderId={activeFolderId}
+          onSelect={(id) => {
+            router.push(`/projects/${projectId}/${envId}/${id}`);
+          }}
+          onPrefetch={(id) => {
+            router.prefetch(`/projects/${projectId}/${envId}/${id}`);
+          }}
+          onCreateSubfolder={(id) => {
+            setSelectedParentId(id);
+            setIsCreateOpen(true);
+          }}
+          onRename={(id, name) => {
+            setSelectedFolderForAction({ id, name });
+            setIsRenameOpen(true);
+          }}
+          onDelete={(id, name) => {
+            setSelectedFolderForAction({ id, name });
+            setIsDeleteOpen(true);
+          }}
+          onDrop={handleDrop}
+        />
+
+        {/* Empty space below folders behaves as root drop target */}
+        <div
+          className={cn(
+            "flex-1 min-h-10 mt-1 rounded-md transition-all",
+            isRootDragOver && "bg-indigo-50 ring-2 ring-indigo-400 ring-inset flex items-center justify-center"
+          )}
+          onDragOver={handleRootDragOver}
+          onDragEnter={handleRootDragEnter}
+          onDragLeave={handleRootDragLeave}
+          onDrop={handleRootDrop}
+          aria-hidden={!isRootDragOver}
+        >
+          {isRootDragOver && (
+            <span className="text-[10px] font-bold uppercase tracking-widest text-indigo-500">
+              Drop to move to root
+            </span>
+          )}
+        </div>
+      </div>
 
       <CreateFolderModal 
         open={isCreateOpen}
