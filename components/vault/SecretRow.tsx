@@ -65,6 +65,7 @@ export function SecretRow({
   
   const derivedKey = useVaultStore((s) => s.derivedKey);
   const touchActivity = useVaultStore((s) => s.touchActivity);
+  const lock = useVaultStore((s) => s.lock);
 
   const REVEAL_DURATION = 30;
 
@@ -133,8 +134,9 @@ export function SecretRow({
       
       console.log(`[SecretRow] Decrypted ${keyName}: length=${decrypted.length}`);
     } catch (err) {
-      console.error('[SecretRow] Decryption failed:', err);
-      toast.error('Decryption failed. Check your master password.');
+      setRevealState({ isRevealed: false, decryptedValue: null, countdown: 0 });
+      lock();
+      toast.error('Vault key mismatch detected. Please unlock again.');
     } finally {
       setIsDecrypting(false);
     }
@@ -154,8 +156,8 @@ export function SecretRow({
       toast.success('Copied to clipboard. Will clear in 30s.');
       touchActivity();
     } catch (err) {
-      console.error(err);
-      toast.error('Failed to copy secret');
+      lock();
+      toast.error('Vault key mismatch detected. Please unlock again.');
     }
   };
 
@@ -194,8 +196,8 @@ export function SecretRow({
       setEditPlaintext(decrypted);
       setIsEditorOpen(true);
     } catch (err) {
-      console.error('[SecretRow] Failed to prepare edit:', err);
-      toast.error('Could not prepare variable for editing');
+      lock();
+      toast.error('Vault key mismatch detected. Please unlock again.');
     } finally {
       setIsPreparingEdit(false);
     }

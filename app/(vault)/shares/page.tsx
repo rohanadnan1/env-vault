@@ -19,26 +19,39 @@ import Link from 'next/link';
 import ClientShareManager from './ClientShareManager';
 
 async function getShares(userId: string) {
-  return await db.share.findMany({
-    where: { sharedById: userId },
-    include: {
-      accessLog: {
-        orderBy: { accessedAt: 'desc' },
-        take: 5
-      }
-    },
-    orderBy: { createdAt: 'desc' }
-  });
+  try {
+    const shares = await db.share.findMany({
+      where: { sharedById: userId },
+      include: {
+        accessLog: {
+          orderBy: { accessedAt: 'desc' },
+          take: 5
+        }
+      },
+      orderBy: { createdAt: 'desc' }
+    });
+    return { shares, loadError: false } as const;
+  } catch (error) {
+    console.error('[SHARES_PAGE]', error);
+    return { shares: [], loadError: true } as const;
+  }
 }
 
 export default async function SharesPage() {
   const session = await auth();
   if (!session?.user?.id) return null;
 
-  const shares = await getShares(session.user.id);
+  const { shares, loadError } = await getShares(session.user.id);
 
   return (
     <div className="max-w-6xl mx-auto space-y-8">
+      {loadError && (
+        <div className="rounded-lg border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-800 flex items-center gap-2">
+          <ShieldAlert className="w-4 h-4 shrink-0" />
+          Share data is temporarily unavailable. Please retry shortly.
+        </div>
+      )}
+
       <div className="flex justify-between items-center">
         <div>
           <h1 className="text-3xl font-bold text-slate-900 flex items-center gap-3">

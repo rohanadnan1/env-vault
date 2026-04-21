@@ -5,27 +5,35 @@ import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Card, CardHeader, CardTitle, CardDescription, CardContent } from '@/components/ui/card';
 import { Tabs, TabsList, TabsTrigger, TabsContent } from '@/components/ui/tabs';
-import { Plus, Settings, ChevronRight, LayoutGrid, Layers, Database } from 'lucide-react';
+import { AlertTriangle, Plus, Settings, ChevronRight, LayoutGrid, Layers, Database } from 'lucide-react';
 import Link from 'next/link';
 import { ClientProjectActions, EmptyStateActions } from './ClientProjectActions';
 
 async function getProject(id: string, userId: string) {
-  const project = await db.project.findUnique({
-    where: { id },
-    include: {
-      environments: {
-        include: {
-          _count: {
-            select: { secrets: true, folders: true }
-          }
-        },
-        orderBy: { createdAt: 'asc' }
+  try {
+    const project = await db.project.findUnique({
+      where: { id },
+      include: {
+        environments: {
+          include: {
+            _count: {
+              select: { secrets: true, folders: true }
+            }
+          },
+          orderBy: { createdAt: 'asc' }
+        }
       }
-    }
-  });
+    });
 
-  if (!project || project.userId !== userId) return null;
-  return project;
+    if (!project || project.userId !== userId) {
+      return { project: null, loadError: false } as const;
+    }
+
+    return { project, loadError: false } as const;
+  } catch (error) {
+    console.error('[PROJECT_PAGE_GET_PROJECT]', error);
+    return { project: null, loadError: true } as const;
+  }
 }
 
 export default async function ProjectPage({ params }: { params: Promise<{ projectId: string }> }) {
@@ -33,9 +41,28 @@ export default async function ProjectPage({ params }: { params: Promise<{ projec
   if (!session?.user?.id) return null;
 
   const { projectId } = await params;
-  const project = await getProject(projectId, session.user.id);
+  const { project, loadError } = await getProject(projectId, session.user.id);
 
-  if (!project) notFound();
+  if (!project && !loadError) notFound();
+
+  if (!project && loadError) {
+    return (
+      <Card className="border-amber-200 bg-amber-50/60 max-w-3xl mx-auto">
+        <CardContent className="py-10 text-center">
+          <div className="inline-flex items-center justify-center w-12 h-12 rounded-full bg-amber-100 text-amber-700 mb-4">
+            <AlertTriangle className="w-6 h-6" />
+          </div>
+          <h2 className="text-xl font-bold text-amber-900">Project data is temporarily unavailable</h2>
+          <p className="text-amber-800 mt-2">Your session is still active. Please retry in a few seconds.</p>
+          <div className="mt-5">
+            <Link href="/dashboard">
+              <Button size="sm">Back to Dashboard</Button>
+            </Link>
+          </div>
+        </CardContent>
+      </Card>
+    );
+  }
 
   // If project has no environments, we could automatically create 'development' or show a setup state
   // For now, let's just render the list.

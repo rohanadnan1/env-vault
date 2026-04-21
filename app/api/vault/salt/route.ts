@@ -21,8 +21,28 @@ export async function GET() {
       return NextResponse.json({ error: 'User not found' }, { status: 404 });
     }
 
+    const verificationSample = await db.secret.findFirst({
+      where: {
+        environment: {
+          project: {
+            userId,
+          },
+        },
+      },
+      select: {
+        keyName: true,
+        valueEncrypted: true,
+        iv: true,
+        environmentId: true,
+      },
+      orderBy: { updatedAt: 'desc' },
+    });
+
     if (user.vaultSalt) {
-      return NextResponse.json({ salt: user.vaultSalt });
+      return NextResponse.json({
+        salt: user.vaultSalt,
+        verificationSample,
+      });
     }
 
     const newSalt = crypto.randomBytes(32).toString('base64');
@@ -31,7 +51,10 @@ export async function GET() {
       data: { vaultSalt: newSalt }
     });
 
-    return NextResponse.json({ salt: newSalt });
+    return NextResponse.json({
+      salt: newSalt,
+      verificationSample,
+    });
   } catch (error) {
     return NextResponse.json({ error: 'Internal Server Error' }, { status: 500 });
   }

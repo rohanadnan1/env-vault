@@ -3,6 +3,7 @@
 import { useState, useEffect } from 'react';
 import { useVaultStore } from '@/lib/store/vaultStore';
 import { deriveVaultKey } from '@/lib/crypto/vault';
+import { decryptSecret } from '@/lib/crypto/decrypt';
 import { 
   isBiometricSupported, 
   isBiometricEnrolled, 
@@ -31,6 +32,24 @@ export function VaultUnlock() {
     setBiometricEnrolled
   } = useVaultStore();
 
+  const verifyDerivedKey = async (
+    key: CryptoKey,
+    verificationSample?: {
+      keyName: string;
+      valueEncrypted: string;
+      iv: string;
+      environmentId: string;
+    } | null
+  ) => {
+    if (!verificationSample) {
+      return true;
+    }
+
+    const aad = `${verificationSample.keyName}:${verificationSample.environmentId}`;
+    await decryptSecret(verificationSample.valueEncrypted, verificationSample.iv, key, aad);
+    return true;
+  };
+
   // Detect biometric support on mount
   useEffect(() => {
     isBiometricSupported().then(isSupported => {
@@ -54,15 +73,16 @@ export function VaultUnlock() {
       
       const res = await fetch('/api/vault/salt');
       if (!res.ok) throw new Error('Failed to fetch salt');
-      const { salt } = await res.json();
+      const { salt, verificationSample } = await res.json();
       
       const key = await deriveVaultKey(decryptedPw, salt);
+      await verifyDerivedKey(key, verificationSample);
       unlock(key);
       toast.success('Vault unlocked with Touch ID');
     } catch (err: any) {
       console.error('Biometric unlock failed:', err);
       if (err.name !== 'NotAllowedError') { // Ignore user cancel
-        toast.error('Biometric unlock failed. Please use your password.');
+        toast.error('Biometric unlock failed or key mismatch. Please use your password.');
       }
     } finally {
       setIsScanning(false);
@@ -77,12 +97,13 @@ export function VaultUnlock() {
     try {
       const res = await fetch('/api/vault/salt');
       if (!res.ok) throw new Error('Failed to fetch salt');
-      const { salt } = await res.json();
+      const { salt, verificationSample } = await res.json();
       
       // PBKDF2 blocks the UI thread, defer with setTimeout
       setTimeout(async () => {
         try {
           const key = await deriveVaultKey(password, salt);
+          await verifyDerivedKey(key, verificationSample);
           
           if (enrollBio) {
             try {
@@ -98,6 +119,7 @@ export function VaultUnlock() {
           unlock(key);
         } catch (_err) {
           setError(true);
+          toast.error('Incorrect master password.');
           setIsLoading(false);
         }
       }, 10);

@@ -12,17 +12,22 @@ export default async function VaultLayout({ children }: { children: React.ReactN
     redirect('/login');
   }
 
-  // Fetch projects for the sidebar
-  const projects = await db.project.findMany({
-    where: { userId: session.user.id },
-    orderBy: { updatedAt: 'desc' },
-    select: {
-      id: true,
-      name: true,
-      emoji: true,
-      color: true,
-    }
-  });
+  // Fetch projects for the sidebar, but keep layout alive on transient DB issues.
+  let projects: { id: string; name: string; emoji: string; color: string }[] = [];
+  try {
+    projects = await db.project.findMany({
+      where: { userId: session.user.id },
+      orderBy: { updatedAt: 'desc' },
+      select: {
+        id: true,
+        name: true,
+        emoji: true,
+        color: true,
+      }
+    });
+  } catch (error) {
+    console.error('[VAULT_LAYOUT_PROJECTS]', error);
+  }
 
   return (
     <div className="flex h-screen bg-slate-50">

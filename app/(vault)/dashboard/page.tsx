@@ -4,35 +4,49 @@ import { CreateProjectModal } from '@/components/vault/CreateProjectModal';
 import Link from 'next/link';
 import { Card, CardHeader, CardTitle, CardDescription, CardContent } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
-import { FolderKanban, ShieldCheck, Clock } from 'lucide-react';
+import { FolderKanban, ShieldCheck, Clock, AlertTriangle } from 'lucide-react';
 
 async function getProjects(userId: string) {
-  return await db.project.findMany({
-    where: { userId },
-    include: {
-      _count: {
-        select: { environments: true }
-      },
-      environments: {
-        include: {
-          _count: {
-            select: { secrets: true }
+  try {
+    const projects = await db.project.findMany({
+      where: { userId },
+      include: {
+        _count: {
+          select: { environments: true }
+        },
+        environments: {
+          include: {
+            _count: {
+              select: { secrets: true }
+            }
           }
         }
-      }
-    },
-    orderBy: { updatedAt: 'desc' },
-  });
+      },
+      orderBy: { updatedAt: 'desc' },
+    });
+
+    return { projects, loadError: false } as const;
+  } catch (error) {
+    console.error('[DASHBOARD_PROJECTS]', error);
+    return { projects: [], loadError: true } as const;
+  }
 }
 
 export default async function DashboardPage() {
   const session = await auth();
   if (!session?.user?.id) return null;
 
-  const projects = await getProjects(session.user.id);
+  const { projects, loadError } = await getProjects(session.user.id);
 
   return (
     <div className="space-y-8 max-w-7xl mx-auto">
+      {loadError && (
+        <div className="rounded-lg border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-800 flex items-center gap-2">
+          <AlertTriangle className="w-4 h-4 shrink-0" />
+          Some data is temporarily unavailable. Your vault session is still active; retry in a moment.
+        </div>
+      )}
+
       <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
         <div>
           <h1 className="text-3xl font-bold tracking-tight text-slate-900 flex items-center gap-2">
