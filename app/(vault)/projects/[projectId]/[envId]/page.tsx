@@ -42,7 +42,7 @@ async function getData(projectId: string, envId: string, folderId?: string, user
 
   let allFolders: { id: string; name: string; environmentId: string; parentId: string | null; createdAt: Date; updatedAt: Date }[] = [];
   let secrets: { id: string; keyName: string; valueEncrypted: string; iv: string; tags: string; environmentId: string; folderId: string | null; createdAt: Date; updatedAt: Date }[] = [];
-  let files: { id: string; name: string }[] = [];
+  let files: { id: string; name: string; contentEncrypted: string; iv: string; mimeType: string; createdAt: Date }[] = [];
   let loadError = false;
 
   try {
@@ -59,7 +59,7 @@ async function getData(projectId: string, envId: string, folderId?: string, user
       db.vaultFile.findMany({
         where: { environmentId: envId, folderId: folderId || null },
         orderBy: { name: 'asc' },
-        select: { id: true, name: true },
+        select: { id: true, name: true, contentEncrypted: true, iv: true, mimeType: true, createdAt: true },
       }),
     ]);
 

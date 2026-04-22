@@ -22,7 +22,7 @@ interface VaultStructureViewProps {
   breadcrumbs: { id: string; name: string }[];
   currentFolder: { name: string } | null;
   secrets: { id: string; keyName: string; valueEncrypted: string; iv: string; tags: string }[];
-  files: { id: string; name: string }[];
+  files: { id: string; name: string; contentEncrypted: string; iv: string; mimeType: string; createdAt: Date }[];
   folderId: string | null;
 }
 
