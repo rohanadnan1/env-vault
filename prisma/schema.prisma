@@ -28,12 +28,41 @@ model User {
   twoFAMasterIv           String?
   twoFAUnlockToken        String?   // random 32-byte token used to derive AES key
 
-  sessions      Session[]
-  accounts      Account[]
-  projects      Project[]
-  shares        Share[]   @relation("SharedBy")
-  shareAccess   ShareAccess[]
-  recoveryCodes RecoveryCode[]
+  sessions        Session[]
+  accounts        Account[]
+  projects        Project[]
+  shares          Share[]          @relation("SharedBy")
+  shareAccess     ShareAccess[]
+  recoveryCodes   RecoveryCode[]
+  trustedDevices  TrustedDevice[]
+  loginChallenges LoginChallenge[]
+}
+
+model TrustedDevice {
+  id         String   @id @default(cuid())
+  userId     String
+  user       User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  deviceId   String
+  label      String?
+  ipAddress  String?
+  createdAt  DateTime @default(now())
+  lastSeenAt DateTime @default(now())
+
+  @@unique([userId, deviceId])
+  @@index([userId])
+}
+
+model LoginChallenge {
+  id        String   @id @default(cuid())
+  userId    String
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  deviceId  String
+  ipAddress String?
+  expiresAt DateTime
+  verified  Boolean  @default(false)
+  createdAt DateTime @default(now())
+
+  @@index([userId])
 }
 
 model RecoveryCode {
