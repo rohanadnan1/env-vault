@@ -22,6 +22,8 @@ import {
 } from "@/components/ui/select";
 import { toast } from "sonner";
 import { TwoFactorSetup } from "./TwoFactorSetup";
+import { RecoveryCodesSection } from "./RecoveryCodesSection";
+import { TwoFAVaultSetup } from "./TwoFAVaultSetup";
 import { cn } from "@/lib/utils";
 import { Badge } from "@/components/ui/badge";
 
@@ -195,10 +197,16 @@ export function SecurityTab() {
         </CardFooter>
       </Card>
 
-      <TwoFactorSetup 
-        open={isSettingUp2FA} 
-        onOpenChange={setIsSettingUp2FA} 
-        onSuccess={() => setIs2FAEnabled(true)} 
+      {/* Recovery Codes */}
+      <RecoveryCodesSection />
+
+      {/* 2FA Vault Unlock */}
+      <TwoFAVaultSetup is2FAEnabled={is2FAEnabled} />
+
+      <TwoFactorSetup
+        open={isSettingUp2FA}
+        onOpenChange={setIsSettingUp2FA}
+        onSuccess={() => setIs2FAEnabled(true)}
       />
     </div>
   );

@@ -16,16 +16,41 @@ model User {
   image         String?
   createdAt     DateTime  @default(now())
   updatedAt     DateTime  @updatedAt
-  vaultSalt     String?   
-  vaultKdfIter  Int       @default(600000) 
-  totpSecret    String?   
-  lastVaultAt   DateTime? 
- 
+  vaultSalt     String?
+  vaultKdfIter  Int       @default(600000)
+  totpSecret    String?
+  lastVaultAt   DateTime?
+
+  // Recovery codes
+  codesGeneratedAt        DateTime?
+  // 2FA vault unlock (encrypted master password stored server-side, gated by TOTP)
+  twoFAEncryptedMaster    String?
+  twoFAMasterIv           String?
+  twoFAUnlockToken        String?   // random 32-byte token used to derive AES key
+
   sessions      Session[]
   accounts      Account[]
   projects      Project[]
   shares        Share[]   @relation("SharedBy")
   shareAccess   ShareAccess[]
+  recoveryCodes RecoveryCode[]
+}
+
+model RecoveryCode {
+  id              String    @id @default(cuid())
+  userId          String
+  codeHash        String    // SHA-256(normalized_code) hex — for fast lookup
+  encryptedMaster String    // AES-GCM ciphertext of master password, base64
+  masterIv        String    // AES-GCM IV, base64
+  codeSalt        String    // HKDF salt, base64
+  index           Int       // display order 0-29
+  usedAt          DateTime?
+  createdAt       DateTime  @default(now())
+
+  user            User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+  @@index([userId, codeHash])
 }
  
 model Project {
