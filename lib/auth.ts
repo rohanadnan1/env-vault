@@ -10,6 +10,46 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
   ...authConfig,
   adapter: PrismaAdapter(db),
   session: { strategy: "jwt" },
+  callbacks: {
+    ...authConfig.callbacks,
+    async jwt({ token, user, trigger }) {
+      if (user) {
+        // Initial sign-in: embed sessionVersion
+        const dbUser = await db.user.findUnique({
+          where: { id: user.id as string },
+          select: { sessionVersion: true },
+        });
+        token.id = user.id;
+        token.sessionVersion = dbUser?.sessionVersion ?? 1;
+      } else if (trigger === 'update') {
+        // Forced refresh (keep current device after sign-out-all)
+        if (token.id) {
+          const dbUser = await db.user.findUnique({
+            where: { id: token.id as string },
+            select: { sessionVersion: true },
+          });
+          if (!dbUser) return null;
+          token.sessionVersion = dbUser.sessionVersion;
+        }
+      } else if (token.id) {
+        // Normal request: validate sessionVersion to detect sign-out-all
+        const dbUser = await db.user.findUnique({
+          where: { id: token.id as string },
+          select: { sessionVersion: true },
+        });
+        if (!dbUser || dbUser.sessionVersion !== (token.sessionVersion as number)) {
+          return null; // invalidate — user was signed out from all devices
+        }
+      }
+      return token;
+    },
+    async session({ session, token }) {
+      if (session.user && token.id) {
+        session.user.id = token.id as string;
+      }
+      return session;
+    },
+  },
   providers: [
     Resend({
       from: process.env.RESEND_FROM,

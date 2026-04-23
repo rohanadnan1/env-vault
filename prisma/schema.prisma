@@ -18,8 +18,9 @@ model User {
   updatedAt     DateTime  @updatedAt
   vaultSalt     String?
   vaultKdfIter  Int       @default(600000)
-  totpSecret    String?
-  lastVaultAt   DateTime?
+  totpSecret      String?
+  lastVaultAt     DateTime?
+  sessionVersion  Int       @default(1)
 
   // Recovery codes
   codesGeneratedAt        DateTime?

@@ -1,13 +1,14 @@
 "use client";
 
 import { useState, useEffect } from "react";
-import { 
-  Lock, 
-  KeyRound, 
-  Smartphone, 
+import {
+  Lock,
+  KeyRound,
+  Smartphone,
   ShieldCheck,
   AlertCircle,
-  Loader2
+  Loader2,
+  MonitorX,
 } from "lucide-react";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle, CardFooter } from "@/components/ui/card";
 import { Label } from "@/components/ui/label";
@@ -23,6 +24,7 @@ import {
 import { toast } from "sonner";
 import { TwoFactorSetup } from "./TwoFactorSetup";
 import { RecoveryCodesSection } from "./RecoveryCodesSection";
+import { SignOutAllDevicesModal } from "./SignOutAllDevicesModal";
 import { TwoFAVaultSetup } from "./TwoFAVaultSetup";
 import { cn } from "@/lib/utils";
 import { Badge } from "@/components/ui/badge";
@@ -32,6 +34,8 @@ export function SecurityTab() {
   const [is2FAEnabled, setIs2FAEnabled] = useState(false);
   const [isSettingUp2FA, setIsSettingUp2FA] = useState(false);
   const [isLoading, setIsLoading] = useState(true);
+  const [showSignOutAll, setShowSignOutAll] = useState(false);
+  const [hasRecoveryCodes, setHasRecoveryCodes] = useState(false);
 
   // Load status on mount
   useEffect(() => {
@@ -46,6 +50,13 @@ export function SecurityTab() {
         if (res.ok) {
           const data = await res.json();
           setIs2FAEnabled(data.enabled);
+        }
+
+        // Load recovery code count
+        const rcRes = await fetch("/api/recovery-codes/status");
+        if (rcRes.ok) {
+          const rcData = await rcRes.json();
+          setHasRecoveryCodes((rcData.remaining ?? 0) > 0);
         }
       } catch (_err) {
         console.error("Failed to load security status");
@@ -197,6 +208,46 @@ export function SecurityTab() {
         </CardFooter>
       </Card>
 
+      {/* Active Sessions */}
+      <Card className="border-slate-200 shadow-sm rounded-2xl overflow-hidden">
+        <CardHeader className="bg-slate-50/50 border-b border-slate-100 flex flex-row items-center justify-between">
+          <div>
+            <CardTitle>Active Sessions</CardTitle>
+            <CardDescription>Sign out all devices that have access to your account.</CardDescription>
+          </div>
+          <div className="p-2 bg-white rounded-lg border border-slate-100 shadow-sm">
+            <MonitorX className="w-5 h-5 text-red-500" />
+          </div>
+        </CardHeader>
+        <CardContent className="p-6">
+          <div className="flex items-start gap-4">
+            <div className="w-10 h-10 rounded-xl flex items-center justify-center border bg-red-50 border-red-100">
+              <MonitorX className="w-5 h-5 text-red-500" />
+            </div>
+            <div className="flex-1 space-y-1">
+              <h3 className="font-bold text-slate-900">Sign out everywhere</h3>
+              <p className="text-sm text-slate-500">
+                Immediately invalidates all active sessions on every device. You can choose
+                to stay signed in on this device after verification.
+              </p>
+              {!is2FAEnabled && !hasRecoveryCodes && (
+                <p className="text-xs text-amber-600 font-medium pt-1">
+                  Set up 2FA or generate recovery codes first — verification is required to use this feature.
+                </p>
+              )}
+            </div>
+            <Button
+              variant="destructive"
+              className="shrink-0"
+              disabled={!is2FAEnabled && !hasRecoveryCodes}
+              onClick={() => setShowSignOutAll(true)}
+            >
+              Sign Out All
+            </Button>
+          </div>
+        </CardContent>
+      </Card>
+
       {/* Recovery Codes */}
       <RecoveryCodesSection />
 
@@ -207,6 +258,13 @@ export function SecurityTab() {
         open={isSettingUp2FA}
         onOpenChange={setIsSettingUp2FA}
         onSuccess={() => setIs2FAEnabled(true)}
+      />
+
+      <SignOutAllDevicesModal
+        open={showSignOutAll}
+        onOpenChange={setShowSignOutAll}
+        hasTotp={is2FAEnabled}
+        hasRecoveryCodes={hasRecoveryCodes}
       />
     </div>
   );
