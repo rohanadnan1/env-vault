@@ -46,7 +46,14 @@ export function CreateProjectModal() {
         body: JSON.stringify(formData),
       });
 
-      if (!res.ok) throw new Error('Failed to create project');
+      const data = await res.json();
+
+      if (res.status === 409) {
+        toast.error(data.error || 'A project with this name already exists.');
+        return;
+      }
+
+      if (!res.ok) throw new Error(data.error || 'Failed to create project');
 
       toast.success('Project created successfully');
       setOpen(false);

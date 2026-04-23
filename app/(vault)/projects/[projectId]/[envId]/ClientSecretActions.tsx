@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from 'react';
+import { useState, useTransition } from 'react';
 import { useRouter } from 'next/navigation';
 import { Button } from '@/components/ui/button';
 import { Plus, FileUp, FilePlus, Copy, Loader2 } from 'lucide-react';
@@ -27,6 +27,7 @@ export function ClientSecretActions({
   currentFolderName,
   currentFolderDepth,
   secretsForCopy,
+  existingFileNames = [],
 }: { 
   projectId: string;
   environmentId: string;
@@ -34,6 +35,8 @@ export function ClientSecretActions({
   currentFolderName: string | null;
   currentFolderDepth: number;
   secretsForCopy: { id: string; keyName: string; valueEncrypted: string; iv: string }[];
+  /** Names of files already in this folder — used for client-side conflict detection */
+  existingFileNames?: string[];
 }) {
   const [isEditorOpen, setIsEditorOpen] = useState(false);
   const [isImportOpen, setIsImportOpen] = useState(false);
@@ -41,6 +44,7 @@ export function ClientSecretActions({
   const [isNestedSecretPromptOpen, setIsNestedSecretPromptOpen] = useState(false);
   const [isCopyingAll, setIsCopyingAll] = useState(false);
   const router = useRouter();
+  const [, startTransition] = useTransition();
   const isVariablesFolder = isSystemFolderName(currentFolderName || '');
   const derivedKey = useVaultStore((s) => s.derivedKey);
   const touchActivity = useVaultStore((s) => s.touchActivity);
@@ -201,9 +205,8 @@ export function ClientSecretActions({
         onOpenChange={setIsFileEditorOpen}
         folderId={folderId}
         environmentId={environmentId}
-        onSuccess={() => {
-          router.refresh();
-        }}
+        existingFileNames={existingFileNames}
+        onSuccess={() => startTransition(() => router.refresh())}
       />
 
       <Dialog open={isNestedSecretPromptOpen} onOpenChange={setIsNestedSecretPromptOpen}>

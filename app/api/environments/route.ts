@@ -22,6 +22,20 @@ export async function POST(req: Request) {
       return NextResponse.json({ error: 'Project not found or unauthorized' }, { status: 404 });
     }
 
+    // Prevent duplicate environment names within the same project (case-insensitive)
+    const duplicate = await db.environment.findFirst({
+      where: {
+        projectId: data.projectId,
+        name: { equals: data.name, mode: 'insensitive' },
+      },
+    });
+    if (duplicate) {
+      return NextResponse.json(
+        { error: `An environment named "${data.name}" already exists in this project.` },
+        { status: 409 }
+      );
+    }
+
     const environment = await db.environment.create({
       data: {
         name: data.name,

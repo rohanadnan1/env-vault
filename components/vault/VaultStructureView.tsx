@@ -22,7 +22,7 @@ interface VaultStructureViewProps {
   breadcrumbs: { id: string; name: string }[];
   currentFolder: { name: string } | null;
   secrets: { id: string; keyName: string; valueEncrypted: string; iv: string; tags: string }[];
-  files: { id: string; name: string; contentEncrypted: string; iv: string; mimeType: string; createdAt: Date }[];
+  files: { id: string; name: string; contentEncrypted: string; iv: string; mimeType: string; createdAt: Date; updatedAt: Date; pinnedAt: Date | null; _count: { comments: number } }[];
   folderId: string | null;
 }
 
@@ -161,6 +161,7 @@ export function VaultStructureView({
             currentFolderName={currentFolder?.name || null}
             currentFolderDepth={breadcrumbs.length}
             secretsForCopy={optimisticSecrets}
+            existingFileNames={optimisticFiles.map(f => f.name)}
           />
         </div>
       </div>

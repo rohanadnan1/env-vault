@@ -1,6 +1,13 @@
 import type { NextConfig } from "next";
 
 const nextConfig: NextConfig = {
+  experimental: {
+    // Cache dynamically visited folder pages for 30 s in the client router.
+    // Navigating away and back within this window is instant — no server round-trip.
+    staleTimes: {
+      dynamic: 30,
+    },
+  },
   async headers() {
     return [
       {

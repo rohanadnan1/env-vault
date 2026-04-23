@@ -78,9 +78,39 @@ export async function POST(req: Request) {
     }
 
     const file = await db.$transaction(async (tx) => {
+      // Auto-rename if a file with the same name already exists in this scope
+      let resolvedName = data.name;
+      const conflict = await tx.vaultFile.findFirst({
+        where: {
+          environmentId: data.environmentId,
+          folderId: data.folderId || null,
+          name: data.name,
+        },
+      });
+      if (conflict) {
+        // Split into base + extension (handles dotfiles like .env → base='.env', ext='')
+        const lastDot = data.name.lastIndexOf('.');
+        const hasExt = lastDot > 0; // lastDot > 0 excludes leading-dot files like ".env"
+        const base = hasExt ? data.name.slice(0, lastDot) : data.name;
+        const ext  = hasExt ? data.name.slice(lastDot)   : '';
+        let counter = 1;
+        while (true) {
+          const candidate = `${base}${counter}${ext}`;
+          const taken = await tx.vaultFile.findFirst({
+            where: {
+              environmentId: data.environmentId,
+              folderId: data.folderId || null,
+              name: candidate,
+            },
+          });
+          if (!taken) { resolvedName = candidate; break; }
+          counter++;
+        }
+      }
+
       const created = await tx.vaultFile.create({
         data: {
-          name: data.name,
+          name: resolvedName,
           contentEncrypted: data.contentEncrypted,
           iv: data.iv,
           mimeType: data.mimeType || 'text/plain',

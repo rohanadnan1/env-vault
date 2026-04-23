@@ -8,6 +8,7 @@ const UpdateVaultFileSchema = z.object({
   contentEncrypted: z.string().min(1).optional(),
   iv: z.string().min(1).optional(),
   mimeType: z.string().optional(),
+  pinnedAt: z.string().datetime().nullable().optional(),
 });
 
 async function checkFileOwnership(id: string, userId: string) {
@@ -53,6 +54,23 @@ export async function PATCH(req: Request, { params }: { params: Promise<{ id: st
     const body = await req.json();
     const data = UpdateVaultFileSchema.parse(body);
 
+    // ── Pin-only update ────────────────────────────────────────────────────
+    // Use raw SQL so Prisma's @updatedAt is NOT triggered.
+    // A pin action is metadata, not a content edit — it must not affect
+    // the recency badges or create a history revision.
+    const keys = Object.keys(data);
+    if (keys.length === 1 && keys[0] === 'pinnedAt') {
+      if (data.pinnedAt === null || data.pinnedAt === undefined) {
+        await db.$executeRaw`UPDATE "VaultFile" SET "pinnedAt" = NULL WHERE "id" = ${id}`;
+      } else {
+        const pinnedAt = new Date(data.pinnedAt);
+        await db.$executeRaw`UPDATE "VaultFile" SET "pinnedAt" = ${pinnedAt} WHERE "id" = ${id}`;
+      }
+      const updated = await db.vaultFile.findUnique({ where: { id } });
+      return NextResponse.json(updated);
+    }
+
+    // ── Content / name edit ────────────────────────────────────────────────
     const updated = await db.$transaction(async (tx) => {
       const latestHistory = await tx.fileHistory.findFirst({
         where: { fileId: id },
@@ -98,6 +116,7 @@ export async function PATCH(req: Request, { params }: { params: Promise<{ id: st
     return NextResponse.json({ error: 'Internal Server Error' }, { status: 500 });
   }
 }
+
 
 export async function DELETE(_: Request, { params }: { params: Promise<{ id: string }> }) {
   const session = await auth();

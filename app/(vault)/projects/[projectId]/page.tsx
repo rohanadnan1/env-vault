@@ -1,13 +1,13 @@
 import { auth } from '@/lib/auth';
 import { db } from '@/lib/db';
-import { notFound, redirect } from 'next/navigation';
+import { notFound } from 'next/navigation';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Card, CardHeader, CardTitle, CardDescription, CardContent } from '@/components/ui/card';
-import { Tabs, TabsList, TabsTrigger, TabsContent } from '@/components/ui/tabs';
-import { AlertTriangle, Plus, Settings, ChevronRight, LayoutGrid, Layers, Database } from 'lucide-react';
+import { AlertTriangle, Layers, Database } from 'lucide-react';
 import Link from 'next/link';
 import { ClientProjectActions, EmptyStateActions } from './ClientProjectActions';
+import { ClientEnvironmentCard } from './ClientEnvironmentCard';
 
 async function getProject(id: string, userId: string) {
   try {
@@ -113,32 +113,11 @@ export default async function ProjectPage({ params }: { params: Promise<{ projec
           ) : (
             <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
               {project.environments.map((env) => (
-                <Link key={env.id} href={`/projects/${project.id}/${env.id}`}>
-                  <Card className="hover:border-indigo-400 transition-all group hover:bg-slate-50/50 cursor-pointer border-slate-200">
-                    <CardContent className="p-5">
-                      <div className="flex justify-between items-center mb-4">
-                        <div className="flex items-center gap-2">
-                          <div className={`w-2.5 h-2.5 rounded-full ${
-                            env.name.toLowerCase() === 'production' ? 'bg-rose-500' : 
-                            env.name.toLowerCase() === 'staging' ? 'bg-amber-500' : 'bg-emerald-500'
-                          }`} />
-                          <span className="font-bold text-slate-900 capitalize">{env.name}</span>
-                        </div>
-                        <ChevronRight className="w-4 h-4 text-slate-300 group-hover:text-indigo-400 transition-colors" />
-                      </div>
-                      <div className="grid grid-cols-2 gap-4">
-                        <div className="space-y-1">
-                          <p className="text-xs text-slate-400 font-medium uppercase tracking-wider">Secrets</p>
-                          <p className="text-lg font-bold text-slate-700">{env._count.secrets}</p>
-                        </div>
-                        <div className="space-y-1">
-                          <p className="text-xs text-slate-400 font-medium uppercase tracking-wider">Folders</p>
-                          <p className="text-lg font-bold text-slate-700">{env._count.folders}</p>
-                        </div>
-                      </div>
-                    </CardContent>
-                  </Card>
-                </Link>
+                <ClientEnvironmentCard
+                  key={env.id}
+                  env={env}
+                  projectId={project.id}
+                />
               ))}
             </div>
           )}

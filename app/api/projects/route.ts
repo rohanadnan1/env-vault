@@ -30,6 +30,20 @@ export async function POST(req: Request) {
     const body = await req.json();
     const data = CreateProjectSchema.parse(body);
 
+    // Prevent duplicate project names for the same user (case-insensitive)
+    const duplicate = await db.project.findFirst({
+      where: {
+        userId: session.user.id,
+        name: { equals: data.name, mode: 'insensitive' },
+      },
+    });
+    if (duplicate) {
+      return NextResponse.json(
+        { error: `A project named "${data.name}" already exists.` },
+        { status: 409 }
+      );
+    }
+
     const project = await db.project.create({
       data: { ...data, userId: session.user.id },
     });

@@ -50,9 +50,10 @@ model Environment {
   project   Project  @relation(fields: [projectId], references: [id], onDelete: Cascade)
   createdAt DateTime @default(now())
  
-  folders   Folder[]
-  secrets   Secret[]
+  folders    Folder[]
+  secrets    Secret[]
   vaultFiles VaultFile[]
+  bundles    FileBundle[]
  
   @@unique([projectId, name])
 }
@@ -70,6 +71,7 @@ model Folder {
  
   secrets       Secret[]
   vaultFiles    VaultFile[]
+  bundles       FileBundle[]
 }
  
 model Secret {
@@ -106,19 +108,35 @@ model SecretHistory {
 }
  
 model VaultFile {
-  id             String  @id @default(cuid())
-  name           String  
+  id               String  @id @default(cuid())
+  name             String  
   contentEncrypted String 
-  iv             String
-  mimeType       String  @default("text/plain")
-  environmentId  String
-  environment    Environment @relation(fields: [environmentId], references: [id], onDelete: Cascade)
-  folderId       String?
-  folder         Folder?  @relation(fields: [folderId], references: [id])
-  createdAt      DateTime @default(now())
-  updatedAt      DateTime @updatedAt
+  iv               String
+  mimeType         String  @default("text/plain")
+  environmentId    String
+  environment      Environment @relation(fields: [environmentId], references: [id], onDelete: Cascade)
+  folderId         String?
+  folder           Folder?  @relation(fields: [folderId], references: [id])
+  pinnedAt         DateTime?
+  createdAt        DateTime @default(now())
+  updatedAt        DateTime @updatedAt
 
-  history        FileHistory[]
+  history          FileHistory[]
+  comments         FileComment[]
+  bundleMembership FileBundleMember[]
+}
+
+model FileComment {
+  id          String    @id @default(cuid())
+  fileId      String
+  file        VaultFile @relation(fields: [fileId], references: [id], onDelete: Cascade)
+  content     String    // plaintext, or AES-GCM ciphertext (base64) when isEncrypted = true
+  iv          String?   // AES-GCM IV (base64) — only set when isEncrypted = true
+  isEncrypted Boolean   @default(false)
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
+
+  @@index([fileId, createdAt])
 }
 
 model FileHistory {
@@ -135,6 +153,44 @@ model FileHistory {
   createdAt        DateTime @default(now())
 
   @@index([fileId, createdAt])
+}
+
+// ── File Bundles ──────────────────────────────────────────────────────────────
+
+enum BundleType {
+  EXTENSION  // grouped by file extension, e.g. ".js"
+  NAME       // grouped by shared base name, e.g. "important"
+  CUSTOM     // user-defined; any files allowed
+}
+
+model FileBundle {
+  id            String     @id @default(cuid())
+  name          String     // display name (auto-generated or user-set)
+  bundleType    BundleType
+  matchRule     String?    // ".js" for EXTENSION | "important" for NAME | null for CUSTOM
+  folderId      String?
+  environmentId String
+  sortOrder     Int        @default(0)
+  createdAt     DateTime   @default(now())
+  updatedAt     DateTime   @updatedAt
+
+  members     FileBundleMember[]
+  folder      Folder?     @relation(fields: [folderId], references: [id], onDelete: Cascade)
+  environment Environment @relation(fields: [environmentId], references: [id], onDelete: Cascade)
+
+  @@index([environmentId, folderId])
+}
+
+model FileBundleMember {
+  fileId   String
+  bundleId String
+  addedAt  DateTime   @default(now())
+
+  file   VaultFile  @relation(fields: [fileId], references: [id], onDelete: Cascade)
+  bundle FileBundle @relation(fields: [bundleId], references: [id], onDelete: Cascade)
+
+  @@id([fileId, bundleId])
+  @@index([bundleId])
 }
  
 model Share {

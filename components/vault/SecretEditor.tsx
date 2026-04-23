@@ -15,6 +15,7 @@ import { Textarea } from '@/components/ui/textarea';
 import { encryptSecret } from '@/lib/crypto/encrypt';
 import { useVaultStore } from '@/lib/store/vaultStore';
 import { toast } from 'sonner';
+import { Info } from 'lucide-react';
 
 interface SecretEditorProps {
   open: boolean;
@@ -45,6 +46,7 @@ export function SecretEditor({
   const [keyName, setKeyName] = useState('');
   const [value, setValue] = useState('');
   const [isLoading, setIsLoading] = useState(false);
+  const [sameValueWarning, setSameValueWarning] = useState(false);
   
   const derivedKey = useVaultStore((s) => s.derivedKey);
   const touchActivity = useVaultStore((s) => s.touchActivity);
@@ -53,6 +55,7 @@ export function SecretEditor({
     if (open) {
       setKeyName(initialData?.keyName || '');
       setValue(initialData?.plaintext || '');
+      setSameValueWarning(false);
     }
   }, [open, initialData]);
 
@@ -60,6 +63,12 @@ export function SecretEditor({
     e.preventDefault();
     if (!derivedKey) {
       toast.error('Vault is locked. Re-enter master password.');
+      return;
+    }
+
+    // Editing: block if value hasn't changed
+    if (initialData?.id && initialData.plaintext !== undefined && value === initialData.plaintext) {
+      setSameValueWarning(true);
       return;
     }
 
@@ -84,6 +93,8 @@ export function SecretEditor({
           iv,
           environmentId,
           folderId,
+          // When creating (not editing), auto-update if this key already exists
+          ...(!initialData?.id && { upsertOnConflict: true }),
         }),
       });
 
@@ -93,8 +104,13 @@ export function SecretEditor({
       }
 
       const savedSecret = await res.json();
+      const wasUpdated = !initialData?.id && savedSecret.action === 'updated';
 
-      toast.success(initialData?.id ? 'Secret updated' : 'Secret created');
+      toast.success(
+        initialData?.id ? 'Secret updated' :
+        wasUpdated     ? `"${keyName}" already existed — value updated to a new version.` :
+                         'Secret created'
+      );
       onSuccess(savedSecret);
       onOpenChange(false);
     } catch (err) {
@@ -138,12 +154,21 @@ export function SecretEditor({
               id="value"
               placeholder="Paste secret content here..."
               value={value}
-              onChange={(e) => setValue(e.target.value)}
+              onChange={(e) => { setValue(e.target.value); setSameValueWarning(false); }}
               required
               disabled={isLoading}
               rows={6}
               className="font-mono text-sm min-h-[150px]"
             />
+            {sameValueWarning && (
+              <div className="flex items-start gap-2.5 rounded-lg border border-amber-200 bg-amber-50 px-3 py-2.5 text-sm text-amber-800">
+                <Info className="w-4 h-4 mt-0.5 shrink-0 text-amber-500" />
+                <span>
+                  This value is identical to the current version.{' '}
+                  <span className="font-semibold">No new version will be created</span> — update the value to save a change.
+                </span>
+              </div>
+            )}
           </div>
 
           <div className="pt-4 border-t border-slate-100 flex items-center justify-end gap-2">
