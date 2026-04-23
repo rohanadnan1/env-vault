@@ -1,7 +1,7 @@
 import { NextResponse } from 'next/server';
 import { auth } from '@/lib/auth';
 import { db } from '@/lib/db';
-import { verify as verifyTOTP } from 'otplib';
+import { verifyTotp } from '@/lib/totp';
 
 export async function POST(req: Request) {
   const session = await auth();
@@ -23,8 +23,7 @@ export async function POST(req: Request) {
       return NextResponse.json({ error: '2FA is not enabled on this account' }, { status: 400 });
     }
 
-    const isValid = verifyTOTP({ token: totpCode, secret: user.totpSecret });
-    if (!isValid) {
+    if (!verifyTotp(totpCode, user.totpSecret)) {
       return NextResponse.json({ error: 'Invalid 2FA code' }, { status: 400 });
     }
 

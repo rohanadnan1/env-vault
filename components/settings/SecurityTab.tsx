@@ -26,6 +26,7 @@ import { TwoFactorSetup } from "./TwoFactorSetup";
 import { RecoveryCodesSection } from "./RecoveryCodesSection";
 import { SignOutAllDevicesModal } from "./SignOutAllDevicesModal";
 import { TwoFAVaultSetup } from "./TwoFAVaultSetup";
+import { ChangeMasterPasswordModal } from "./ChangeMasterPasswordModal";
 import { cn } from "@/lib/utils";
 import { Badge } from "@/components/ui/badge";
 
@@ -36,6 +37,11 @@ export function SecurityTab() {
   const [isLoading, setIsLoading] = useState(true);
   const [showSignOutAll, setShowSignOutAll] = useState(false);
   const [hasRecoveryCodes, setHasRecoveryCodes] = useState(false);
+  const [showChangeMasterPw, setShowChangeMasterPw] = useState(false);
+  const [masterPwStatus, setMasterPwStatus] = useState<{
+    hasSecurity: boolean; hasTotp: boolean; hasRecoveryCodes: boolean;
+    onCooldown: boolean; nextChangeAt: string | null;
+  } | null>(null);
 
   // Load status on mount
   useEffect(() => {
@@ -57,6 +63,12 @@ export function SecurityTab() {
         if (rcRes.ok) {
           const rcData = await rcRes.json();
           setHasRecoveryCodes((rcData.remaining ?? 0) > 0);
+        }
+
+        // Load master password change status
+        const mpRes = await fetch("/api/auth/master-password/status");
+        if (mpRes.ok) {
+          setMasterPwStatus(await mpRes.json());
         }
       } catch (_err) {
         console.error("Failed to load security status");
@@ -177,7 +189,7 @@ export function SecurityTab() {
         </CardContent>
       </Card>
 
-      {/* Change Master Password (UI only foundation) */}
+      {/* Change Master Password */}
       <Card className="border-slate-200 shadow-sm rounded-2xl overflow-hidden">
         <CardHeader className="bg-slate-50/50 border-b border-slate-100 flex flex-row items-center justify-between">
           <div>
@@ -189,21 +201,39 @@ export function SecurityTab() {
           </div>
         </CardHeader>
         <CardContent className="p-6 space-y-4">
-          <div className="p-4 bg-amber-50 rounded-xl border border-amber-100 flex gap-3">
-            <AlertCircle className="w-5 h-5 text-amber-600 shrink-0 mt-0.5" />
-            <div className="text-sm text-amber-800 leading-relaxed font-medium">
-              <strong>Warning:</strong> Re-keying requires decrypting and re-encrypting every secret in your browser. This will be implemented in a future update.
+          {!masterPwStatus?.hasSecurity && (
+            <div className="p-4 bg-amber-50 rounded-xl border border-amber-100 flex gap-3">
+              <AlertCircle className="w-5 h-5 text-amber-600 shrink-0 mt-0.5" />
+              <div className="text-sm text-amber-800 leading-relaxed">
+                You need to set up <strong>2FA</strong> or generate <strong>recovery codes</strong> before you can change your master password.
+                This is required to verify your identity.
+              </div>
             </div>
-          </div>
-
-          <div className="grid gap-2">
-            <Label htmlFor="current-pw">Current Master Password</Label>
-            <Input id="current-pw" type="password" placeholder="••••••••" className="rounded-xl" disabled />
-          </div>
+          )}
+          {masterPwStatus?.onCooldown && masterPwStatus.nextChangeAt && (
+            <div className="p-4 bg-slate-50 rounded-xl border border-slate-200 flex gap-3">
+              <AlertCircle className="w-5 h-5 text-slate-500 shrink-0 mt-0.5" />
+              <div className="text-sm text-slate-600 leading-relaxed">
+                Master password was recently changed. You can change it again after{' '}
+                <strong>{new Date(masterPwStatus.nextChangeAt).toLocaleDateString(undefined, { month: 'long', day: 'numeric', year: 'numeric' })}</strong>.
+              </div>
+            </div>
+          )}
+          {masterPwStatus?.hasSecurity && !masterPwStatus.onCooldown && (
+            <p className="text-sm text-slate-500 leading-relaxed">
+              All secrets and files will be decrypted and re-encrypted in your browser using the new password.
+              This requires verifying your identity with 2FA or a recovery code.
+              After changing, you cannot change it again for <strong className="text-slate-700">10 days</strong>.
+            </p>
+          )}
         </CardContent>
         <CardFooter className="bg-slate-50/50 border-t border-slate-100 px-6 py-4 flex justify-end">
-          <Button disabled className="bg-slate-900 text-white rounded-xl shadow-lg px-8">
-            Coming Soon
+          <Button
+            className="bg-indigo-600 hover:bg-indigo-700 text-white rounded-xl shadow-md px-8"
+            disabled={!masterPwStatus?.hasSecurity || masterPwStatus.onCooldown}
+            onClick={() => setShowChangeMasterPw(true)}
+          >
+            Change Master Password
           </Button>
         </CardFooter>
       </Card>
@@ -266,6 +296,15 @@ export function SecurityTab() {
         hasTotp={is2FAEnabled}
         hasRecoveryCodes={hasRecoveryCodes}
       />
+
+      {masterPwStatus && (
+        <ChangeMasterPasswordModal
+          open={showChangeMasterPw}
+          onOpenChange={setShowChangeMasterPw}
+          hasTotp={masterPwStatus.hasTotp}
+          hasRecoveryCodes={masterPwStatus.hasRecoveryCodes}
+        />
+      )}
     </div>
   );
 }

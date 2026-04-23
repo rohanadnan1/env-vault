@@ -1,7 +1,7 @@
 import { NextResponse } from 'next/server';
 import { db } from '@/lib/db';
 import { createHash } from 'crypto';
-import { verify as totpVerify } from 'otplib';
+import { verifyTotp } from '@/lib/totp';
 import { z } from 'zod';
 
 const Schema = z.object({
@@ -54,8 +54,7 @@ export async function POST(req: Request) {
       if (!user.totpSecret) {
         return NextResponse.json({ error: '2FA is not enabled on this account' }, { status: 400 });
       }
-      const valid = totpVerify({ token: code.replace(/\s/g, ''), secret: user.totpSecret });
-      if (!valid) {
+      if (!verifyTotp(code, user.totpSecret)) {
         return NextResponse.json({ error: 'Invalid authenticator code' }, { status: 400 });
       }
     } else {

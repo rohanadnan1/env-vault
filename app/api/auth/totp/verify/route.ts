@@ -1,7 +1,7 @@
 import { NextResponse } from 'next/server';
 import { auth } from '@/lib/auth';
 import { db } from '@/lib/db';
-import { verify } from 'otplib';
+import { verifyTotp } from '@/lib/totp';
 
 export async function POST(req: Request) {
   const session = await auth();
@@ -15,12 +15,7 @@ export async function POST(req: Request) {
     }
 
     // 1. Verify the token against the secret
-    const isValid = verify({
-      token,
-      secret
-    });
-
-    if (!isValid) {
+    if (!verifyTotp(token, secret)) {
       return NextResponse.json({ error: 'Invalid verification code' }, { status: 400 });
     }
 

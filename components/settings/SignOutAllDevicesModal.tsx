@@ -11,7 +11,7 @@ import {
   ShieldAlert, Smartphone, KeyRound, Loader2, MonitorX, MonitorSmartphone, CheckCircle2,
 } from 'lucide-react';
 import { toast } from 'sonner';
-import { signOut, useSession } from 'next-auth/react';
+import { signOut } from 'next-auth/react';
 import { cn } from '@/lib/utils';
 
 type Step = 'verify' | 'confirm-device' | 'done';
@@ -25,20 +25,19 @@ interface Props {
 }
 
 export function SignOutAllDevicesModal({ open, onOpenChange, hasTotp, hasRecoveryCodes }: Props) {
-  const { update } = useSession();
-
   const [step, setStep] = useState<Step>('verify');
   const [codeType, setCodeType] = useState<CodeType>(hasTotp ? 'totp' : 'recovery');
   const [code, setCode] = useState('');
+  const [verifyId, setVerifyId] = useState<string | null>(null);
   const [isLoading, setIsLoading] = useState(false);
 
   function handleClose() {
     if (isLoading) return;
     onOpenChange(false);
-    // Reset after dialog closes
-    setTimeout(() => { setStep('verify'); setCode(''); }, 300);
+    setTimeout(() => { setStep('verify'); setCode(''); setVerifyId(null); }, 300);
   }
 
+  // Step 1 — verify identity, get a short-lived verifyId
   async function handleVerify() {
     if (!code.trim()) { toast.error('Please enter a code'); return; }
     setIsLoading(true);
@@ -50,6 +49,7 @@ export function SignOutAllDevicesModal({ open, onOpenChange, hasTotp, hasRecover
       });
       const data = await res.json();
       if (!res.ok) { toast.error(data.error ?? 'Verification failed'); return; }
+      setVerifyId(data.verifyId);
       setStep('confirm-device');
     } catch {
       toast.error('Something went wrong — please try again');
@@ -58,24 +58,58 @@ export function SignOutAllDevicesModal({ open, onOpenChange, hasTotp, hasRecover
     }
   }
 
+  // Step 2a — keep current device: server re-issues JWT with new sessionVersion
   async function handleKeepCurrentDevice() {
+    if (!verifyId) return;
     setIsLoading(true);
     try {
-      // Re-embed new sessionVersion into current device's JWT so it stays valid
-      await update();
+      const res = await fetch('/api/auth/sign-out-all/commit', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ verifyId, keepCurrentDevice: true }),
+      });
+      const data = await res.json();
+      if (!res.ok) { toast.error(data.error ?? 'Failed to complete sign-out'); return; }
+
+      if (data.relogin) {
+        // Edge case: server couldn't re-issue the JWT — sign out and re-login
+        toast.info('Please sign in again to continue');
+        await signOut({ redirect: false });
+        window.location.href = '/login';
+        return;
+      }
+
+      // Server already replaced the session cookie — no update() needed
       setStep('done');
     } catch {
-      toast.error('Failed to refresh session');
+      toast.error('Something went wrong — please try again');
     } finally {
       setIsLoading(false);
     }
   }
 
+  // Step 2b — sign out everywhere including current device
   async function handleSignOutEverywhere() {
+    if (!verifyId) return;
     setIsLoading(true);
-    await signOut({ redirect: false });
-    // Redirect to login
-    window.location.href = '/login';
+    try {
+      const res = await fetch('/api/auth/sign-out-all/commit', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ verifyId, keepCurrentDevice: false }),
+      });
+      if (!res.ok) {
+        const data = await res.json();
+        toast.error(data.error ?? 'Failed to complete sign-out');
+        return;
+      }
+      await signOut({ redirect: false });
+      window.location.href = '/login';
+    } catch {
+      toast.error('Something went wrong — please try again');
+    } finally {
+      setIsLoading(false);
+    }
   }
 
   return (
@@ -102,9 +136,7 @@ export function SignOutAllDevicesModal({ open, onOpenChange, hasTotp, hasRecover
                 <button
                   className={cn(
                     'flex-1 py-2 flex items-center justify-center gap-1.5 transition-colors',
-                    codeType === 'totp'
-                      ? 'bg-indigo-600 text-white'
-                      : 'text-slate-600 hover:bg-slate-50'
+                    codeType === 'totp' ? 'bg-indigo-600 text-white' : 'text-slate-600 hover:bg-slate-50'
                   )}
                   onClick={() => { setCodeType('totp'); setCode(''); }}
                 >
@@ -113,9 +145,7 @@ export function SignOutAllDevicesModal({ open, onOpenChange, hasTotp, hasRecover
                 <button
                   className={cn(
                     'flex-1 py-2 flex items-center justify-center gap-1.5 transition-colors border-l border-slate-200',
-                    codeType === 'recovery'
-                      ? 'bg-indigo-600 text-white'
-                      : 'text-slate-600 hover:bg-slate-50'
+                    codeType === 'recovery' ? 'bg-indigo-600 text-white' : 'text-slate-600 hover:bg-slate-50'
                   )}
                   onClick={() => { setCodeType('recovery'); setCode(''); }}
                 >
@@ -188,35 +218,37 @@ export function SignOutAllDevicesModal({ open, onOpenChange, hasTotp, hasRecover
                 Sign Out This Device Too?
               </DialogTitle>
               <DialogDescription className="pt-1 text-slate-600 leading-relaxed">
-                All other devices have been signed out. Do you also want to sign out of
+                All other devices will be signed out. Do you also want to sign out of
                 the device you&apos;re currently using?
               </DialogDescription>
             </DialogHeader>
 
             <div className="space-y-2.5 py-1">
               <button
-                className="w-full flex items-start gap-3.5 rounded-xl border-2 border-slate-200 hover:border-red-300 hover:bg-red-50 p-4 text-left transition-all group"
+                className="w-full flex items-start gap-3.5 rounded-xl border-2 border-slate-200 hover:border-red-300 hover:bg-red-50 p-4 text-left transition-all group disabled:opacity-60"
                 onClick={handleSignOutEverywhere}
                 disabled={isLoading}
               >
-                <MonitorX className="w-5 h-5 mt-0.5 text-red-500 shrink-0" />
+                {isLoading
+                  ? <Loader2 className="w-5 h-5 mt-0.5 text-red-400 shrink-0 animate-spin" />
+                  : <MonitorX className="w-5 h-5 mt-0.5 text-red-500 shrink-0" />}
                 <div>
                   <p className="font-bold text-slate-900 text-sm group-hover:text-red-700">
                     Yes, sign me out everywhere
                   </p>
                   <p className="text-xs text-slate-500 mt-0.5">
-                    You'll be taken to the login page immediately.
+                    You&apos;ll be taken to the login page immediately.
                   </p>
                 </div>
               </button>
 
               <button
-                className="w-full flex items-start gap-3.5 rounded-xl border-2 border-slate-200 hover:border-indigo-300 hover:bg-indigo-50 p-4 text-left transition-all group"
+                className="w-full flex items-start gap-3.5 rounded-xl border-2 border-slate-200 hover:border-indigo-300 hover:bg-indigo-50 p-4 text-left transition-all group disabled:opacity-60"
                 onClick={handleKeepCurrentDevice}
                 disabled={isLoading}
               >
                 {isLoading
-                  ? <Loader2 className="w-5 h-5 mt-0.5 text-indigo-500 shrink-0 animate-spin" />
+                  ? <Loader2 className="w-5 h-5 mt-0.5 text-indigo-400 shrink-0 animate-spin" />
                   : <MonitorSmartphone className="w-5 h-5 mt-0.5 text-indigo-500 shrink-0" />}
                 <div>
                   <p className="font-bold text-slate-900 text-sm group-hover:text-indigo-700">

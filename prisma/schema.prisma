@@ -24,6 +24,7 @@ model User {
 
   // Recovery codes
   codesGeneratedAt        DateTime?
+  masterPasswordChangedAt DateTime?
   // 2FA vault unlock (encrypted master password stored server-side, gated by TOTP)
   twoFAEncryptedMaster    String?
   twoFAMasterIv           String?
