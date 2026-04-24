@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect } from 'react';
 import {
   Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter,
 } from '@/components/ui/dialog';
@@ -8,8 +8,7 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import {
-  KeyRound, Smartphone, ShieldAlert, Loader2, CheckCircle2, Copy, Check,
-  Eye, EyeOff, RefreshCw,
+  KeyRound, Smartphone, ShieldAlert, Loader2, CheckCircle2, Copy, Check, RefreshCw,
 } from 'lucide-react';
 import { toast } from 'sonner';
 import { cn } from '@/lib/utils';
@@ -19,236 +18,229 @@ import { encryptSecret } from '@/lib/crypto/encrypt';
 import { useVaultStore } from '@/lib/store/vaultStore';
 
 type CodeType = 'totp' | 'recovery';
-type Step = 'verify' | 'passwords' | 'rekeying' | 'done';
+type Step = 'verify' | 'rekeying' | 'done';
 
 interface Props {
   open: boolean;
   onOpenChange: (open: boolean) => void;
-  hasTotp: boolean;
   hasRecoveryCodes: boolean;
+  hasTotp: boolean;
 }
 
-interface EncryptedItem { id: string; valueEncrypted: string; iv: string }
-interface EncryptedFile { id: string; contentEncrypted: string; iv: string }
+interface EncryptedSecret { id: string; valueEncrypted: string; iv: string; keyName: string; environmentId: string }
+interface EncryptedFileItem { id: string; contentEncrypted: string; iv: string; name: string; environmentId: string; folderId: string | null }
+interface EncryptedComment { id: string; content: string; iv: string; fileId: string }
 
-export function ChangeMasterPasswordModal({ open, onOpenChange, hasTotp, hasRecoveryCodes }: Props) {
+// Alphanumeric, no ambiguous characters (no 0/O/1/l/I)
+const ALPHABET = 'ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnpqrstuvwxyz23456789';
+
+function generateMasterPassword(length = 32): string {
+  const bytes = crypto.getRandomValues(new Uint8Array(length));
+  let pw = '';
+  for (let i = 0; i < length; i++) pw += ALPHABET[bytes[i] % ALPHABET.length];
+  return pw;
+}
+
+export function ChangeMasterPasswordModal({ open, onOpenChange, hasRecoveryCodes, hasTotp }: Props) {
   const [step, setStep] = useState<Step>('verify');
   const [codeType, setCodeType] = useState<CodeType>(hasTotp ? 'totp' : 'recovery');
   const [verifyCode, setVerifyCode] = useState('');
-  const [verifyId, setVerifyId] = useState<string | null>(null);
-  const [currentPassword, setCurrentPassword] = useState('');
-  const [newPassword, setNewPassword] = useState('');
-  const [confirmPassword, setConfirmPassword] = useState('');
-  const [showCurrent, setShowCurrent] = useState(false);
-  const [showNew, setShowNew] = useState(false);
-  const [showConfirm, setShowConfirm] = useState(false);
   const [isLoading, setIsLoading] = useState(false);
   const [progress, setProgress] = useState({ done: 0, total: 0, label: '' });
-  const [finalPassword, setFinalPassword] = useState('');
+  const [newPassword, setNewPassword] = useState('');
   const [copied, setCopied] = useState(false);
   const [countdown, setCountdown] = useState(15);
 
+  const derivedKey = useVaultStore((s) => s.derivedKey);
+  const isUnlocked = useVaultStore((s) => s.isUnlocked);
   const unlockVault = useVaultStore((s) => s.unlock);
 
   function reset() {
     setStep('verify');
     setVerifyCode('');
-    setVerifyId(null);
-    setCurrentPassword('');
-    setNewPassword('');
-    setConfirmPassword('');
-    setShowCurrent(false);
-    setShowNew(false);
-    setShowConfirm(false);
     setProgress({ done: 0, total: 0, label: '' });
-    setFinalPassword('');
+    setNewPassword('');
     setCopied(false);
     setCountdown(15);
   }
 
   function handleClose() {
-    if (isLoading) return;
+    if (isLoading || step === 'rekeying') return;
     onOpenChange(false);
     setTimeout(reset, 300);
   }
 
-  // Countdown timer on done step
+  // Countdown on done step — auto-closes at 0
   useEffect(() => {
     if (step !== 'done') return;
-    if (countdown <= 0) { handleClose(); return; }
+    if (countdown <= 0) {
+      onOpenChange(false);
+      setTimeout(reset, 300);
+      return;
+    }
     const t = setTimeout(() => setCountdown((c) => c - 1), 1000);
     return () => clearTimeout(t);
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [step, countdown]);
 
-  // ── Step 1: Verify identity ────────────────────────────────────────────────
-  async function handleVerify() {
+  async function handleVerifyAndRekey() {
     if (!verifyCode.trim()) { toast.error('Please enter a code'); return; }
+    if (!isUnlocked || !derivedKey) {
+      toast.error('Please unlock your vault before resetting the master password');
+      return;
+    }
     setIsLoading(true);
+
     try {
-      const res = await fetch('/api/auth/master-password/prepare', {
+      // Step 1: verify identity
+      const prepRes = await fetch('/api/auth/master-password/prepare', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ code: verifyCode.trim(), codeType }),
       });
-      const data = await res.json();
-      if (!res.ok) { toast.error(data.error ?? 'Verification failed'); return; }
-      setVerifyId(data.verifyId);
-      setStep('passwords');
-    } catch {
-      toast.error('Something went wrong — please try again');
-    } finally {
-      setIsLoading(false);
-    }
-  }
+      const prep = await prepRes.json();
+      if (!prepRes.ok) { toast.error(prep.error ?? 'Verification failed'); setIsLoading(false); return; }
 
-  // ── Step 2: Validate passwords, then re-key ────────────────────────────────
-  const handleRekey = useCallback(async () => {
-    if (!verifyId) return;
-    if (!currentPassword) { toast.error('Enter your current master password'); return; }
-    if (!newPassword) { toast.error('Enter a new master password'); return; }
-    if (newPassword === currentPassword) { toast.error('New password must differ from the current one'); return; }
-    if (newPassword !== confirmPassword) { toast.error('Passwords do not match'); return; }
-    if (newPassword.length < 8) { toast.error('New password must be at least 8 characters'); return; }
+      // Step 2: transition to rekey screen — use in-memory derivedKey to decrypt
+      setStep('rekeying');
+      setProgress({ done: 0, total: 0, label: 'Fetching encrypted vault data…' });
 
-    setIsLoading(true);
-    setStep('rekeying');
-
-    try {
-      // Fetch all encrypted data
-      setProgress({ done: 0, total: 0, label: 'Fetching encrypted data…' });
-      const fetchRes = await fetch('/api/auth/master-password/all-encrypted');
-      if (!fetchRes.ok) { toast.error('Failed to fetch vault data'); setStep('passwords'); return; }
-      const { currentSalt, secrets, secretHistories, files, fileHistories } = await fetchRes.json() as {
-        currentSalt: string;
-        secrets: EncryptedItem[];
-        secretHistories: EncryptedItem[];
-        files: EncryptedFile[];
-        fileHistories: EncryptedFile[];
+      const allRes = await fetch('/api/auth/master-password/all-encrypted');
+      if (!allRes.ok) { toast.error('Failed to fetch vault data'); setStep('verify'); setIsLoading(false); return; }
+      const { secrets, secretHistories, files, fileHistories, fileComments } = await allRes.json() as {
+        secrets: EncryptedSecret[];
+        secretHistories: EncryptedSecret[];
+        files: EncryptedFileItem[];
+        fileHistories: EncryptedFileItem[];
+        fileComments: EncryptedComment[];
       };
 
-      if (!currentSalt) { toast.error('Vault not initialised — unlock your vault first'); setStep('passwords'); return; }
+      const oldKey = derivedKey;
 
-      // Derive old key
-      setProgress({ done: 0, total: 0, label: 'Deriving old key…' });
-      let oldKey: CryptoKey;
-      try {
-        oldKey = await deriveVaultKey(currentPassword, currentSalt);
-      } catch {
-        toast.error('Failed to derive old key');
-        setStep('passwords');
-        return;
-      }
-
-      // Verify current password is correct by test-decrypting first secret/file
-      const testSecret = secrets[0] ?? secretHistories[0];
-      const testFile = files[0] ?? fileHistories[0];
-      if (testSecret) {
-        try {
-          await decryptSecret(testSecret.valueEncrypted, testSecret.iv, oldKey);
-        } catch {
-          toast.error('Current master password is incorrect');
-          setStep('passwords');
-          return;
-        }
-      } else if (testFile) {
-        try {
-          await decryptSecret(testFile.contentEncrypted, testFile.iv, oldKey);
-        } catch {
-          toast.error('Current master password is incorrect');
-          setStep('passwords');
-          return;
-        }
-      }
-
-      // Generate new salt + derive new key
-      setProgress({ done: 0, total: 0, label: 'Generating new key…' });
+      // Step 3: generate new random master password + new salt + new key
+      setProgress({ done: 0, total: 0, label: 'Generating new master key…' });
+      const generated = generateMasterPassword(32);
       const newSaltBytes = crypto.getRandomValues(new Uint8Array(32));
       const newSalt = btoa(String.fromCharCode(...newSaltBytes));
-      const newKey = await deriveVaultKey(newPassword, newSalt);
+      const newKey = await deriveVaultKey(generated, newSalt);
 
-      const total = secrets.length + secretHistories.length + files.length + fileHistories.length;
+      const total = secrets.length + secretHistories.length + files.length + fileHistories.length + fileComments.length;
       let done = 0;
+      const tick = (label: string) => { done++; setProgress({ done, total, label }); };
 
-      function tick(label: string) {
-        done++;
-        setProgress({ done, total, label });
+      // Helper: try primary AAD, fall back to secondary (for files that moved
+      // between folder/env-root boundaries before the feature settled).
+      async function decryptWithFallback(
+        ciphertext: string, iv: string, primaryAad: string, fallbackAad: string | null
+      ): Promise<{ plain: string; aad: string }> {
+        try {
+          const plain = await decryptSecret(ciphertext, iv, oldKey, primaryAad);
+          return { plain, aad: primaryAad };
+        } catch {
+          if (!fallbackAad) throw new Error('decrypt failed');
+          const plain = await decryptSecret(ciphertext, iv, oldKey, fallbackAad);
+          return { plain, aad: fallbackAad };
+        }
       }
 
-      // Re-encrypt secrets
-      setProgress({ done, total, label: 'Re-encrypting secrets…' });
-      const newSecrets: EncryptedItem[] = [];
+      // Secrets
+      const newSecrets: { id: string; valueEncrypted: string; iv: string }[] = [];
       for (const s of secrets) {
-        const plain = await decryptSecret(s.valueEncrypted, s.iv, oldKey);
-        const { valueEncrypted, iv } = await encryptSecret(plain, newKey);
-        newSecrets.push({ id: s.id, valueEncrypted, iv });
+        const aad = `${s.keyName}:${s.environmentId}`;
+        const plain = await decryptSecret(s.valueEncrypted, s.iv, oldKey, aad);
+        const r = await encryptSecret(plain, newKey, aad);
+        newSecrets.push({ id: s.id, valueEncrypted: r.valueEncrypted, iv: r.iv });
         tick('Re-encrypting secrets…');
       }
 
-      // Re-encrypt secret history
-      const newSecretHistories: EncryptedItem[] = [];
+      // Secret history — same AAD as parent secret
+      const newSecretHistories: { id: string; valueEncrypted: string; iv: string }[] = [];
       for (const h of secretHistories) {
-        const plain = await decryptSecret(h.valueEncrypted, h.iv, oldKey);
-        const { valueEncrypted, iv } = await encryptSecret(plain, newKey);
-        newSecretHistories.push({ id: h.id, valueEncrypted, iv });
+        const aad = `${h.keyName}:${h.environmentId}`;
+        const plain = await decryptSecret(h.valueEncrypted, h.iv, oldKey, aad);
+        const r = await encryptSecret(plain, newKey, aad);
+        newSecretHistories.push({ id: h.id, valueEncrypted: r.valueEncrypted, iv: r.iv });
         tick('Re-encrypting secret history…');
       }
 
-      // Re-encrypt files
-      const newFiles: EncryptedFile[] = [];
+      // Files — try env-scoped AAD first, fallback to folder-scoped
+      const newFiles: { id: string; contentEncrypted: string; iv: string }[] = [];
       for (const f of files) {
-        const plain = await decryptSecret(f.contentEncrypted, f.iv, oldKey);
-        const { valueEncrypted: contentEncrypted, iv } = await encryptSecret(plain, newKey);
-        newFiles.push({ id: f.id, contentEncrypted, iv });
+        const primary = `${f.name}:${f.environmentId}`;
+        const fallback = f.folderId ? `${f.name}:${f.folderId}` : null;
+        const { plain, aad } = await decryptWithFallback(f.contentEncrypted, f.iv, primary, fallback);
+        const r = await encryptSecret(plain, newKey, aad);
+        newFiles.push({ id: f.id, contentEncrypted: r.valueEncrypted, iv: r.iv });
         tick('Re-encrypting files…');
       }
 
-      // Re-encrypt file history
-      const newFileHistories: EncryptedFile[] = [];
+      // File history — same AAD pattern
+      const newFileHistories: { id: string; contentEncrypted: string; iv: string }[] = [];
       for (const h of fileHistories) {
-        const plain = await decryptSecret(h.contentEncrypted, h.iv, oldKey);
-        const { valueEncrypted: contentEncrypted, iv } = await encryptSecret(plain, newKey);
-        newFileHistories.push({ id: h.id, contentEncrypted, iv });
+        const primary = `${h.name}:${h.environmentId}`;
+        const fallback = h.folderId ? `${h.name}:${h.folderId}` : null;
+        const { plain, aad } = await decryptWithFallback(h.contentEncrypted, h.iv, primary, fallback);
+        const r = await encryptSecret(plain, newKey, aad);
+        newFileHistories.push({ id: h.id, contentEncrypted: r.valueEncrypted, iv: r.iv });
         tick('Re-encrypting file history…');
       }
 
-      // Send to server
+      // File comments — AAD is "comment:fileId"
+      const newFileComments: { id: string; content: string; iv: string }[] = [];
+      for (const c of fileComments) {
+        const aad = `comment:${c.fileId}`;
+        const plain = await decryptSecret(c.content, c.iv, oldKey, aad);
+        const r = await encryptSecret(plain, newKey, aad);
+        newFileComments.push({ id: c.id, content: r.valueEncrypted, iv: r.iv });
+        tick('Re-encrypting comments…');
+      }
+
+      // Step 7: atomic commit
       setProgress({ done: total, total, label: 'Saving to server…' });
       const rekeyRes = await fetch('/api/auth/master-password/rekey', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          verifyId,
+          verifyId: prep.verifyId,
           newSalt,
           secrets: newSecrets,
           secretHistories: newSecretHistories,
           files: newFiles,
           fileHistories: newFileHistories,
+          fileComments: newFileComments,
         }),
       });
       const rekeyData = await rekeyRes.json();
-      if (!rekeyRes.ok) { toast.error(rekeyData.error ?? 'Re-key failed'); setStep('passwords'); return; }
+      if (!rekeyRes.ok) {
+        toast.error(rekeyData.error ?? 'Re-key failed');
+        setStep('verify');
+        setIsLoading(false);
+        return;
+      }
 
-      // Update in-memory vault key so the user stays unlocked
+      // Step 8: update in-memory vault key, show the password
       unlockVault(newKey);
-
-      setFinalPassword(newPassword);
+      setNewPassword(generated);
       setCountdown(15);
       setStep('done');
     } catch (err) {
       console.error('rekey error', err);
-      toast.error('Re-keying failed — please try again');
-      setStep('passwords');
+      toast.error('Something went wrong — please try again');
+      setStep('verify');
     } finally {
       setIsLoading(false);
     }
-  }, [verifyId, currentPassword, newPassword, confirmPassword, unlockVault]);
+  }
 
   async function copyPassword() {
-    await navigator.clipboard.writeText(finalPassword);
+    await navigator.clipboard.writeText(newPassword);
     setCopied(true);
     setTimeout(() => setCopied(false), 2000);
   }
+
+  const progressPct = progress.total > 0
+    ? Math.max(10, Math.round((progress.done / progress.total) * 100))
+    : 10;
 
   return (
     <Dialog open={open} onOpenChange={handleClose}>
@@ -260,11 +252,12 @@ export function ChangeMasterPasswordModal({ open, onOpenChange, hasTotp, hasReco
             <DialogHeader>
               <DialogTitle className="flex items-center gap-2 text-slate-900 font-bold text-lg">
                 <KeyRound className="w-5 h-5 text-indigo-500 shrink-0" />
-                Change Master Password
+                Reset Master Password
               </DialogTitle>
               <DialogDescription className="pt-1 text-slate-600 leading-relaxed">
-                This will re-encrypt all your secrets in your browser.
-                Verify your identity first.
+                Verify your identity to reset your master password.
+                A new password will be generated and shown for <strong>15 seconds</strong>.
+                You <strong>must</strong> save it somewhere safe — we cannot show it again.
               </DialogDescription>
             </DialogHeader>
 
@@ -302,7 +295,7 @@ export function ChangeMasterPasswordModal({ open, onOpenChange, hasTotp, hasReco
                     placeholder="000000"
                     value={verifyCode}
                     onChange={(e) => setVerifyCode(e.target.value.replace(/\D/g, '').slice(0, 6))}
-                    onKeyDown={(e) => e.key === 'Enter' && verifyCode.length === 6 && handleVerify()}
+                    onKeyDown={(e) => e.key === 'Enter' && verifyCode.length === 6 && handleVerifyAndRekey()}
                     className="font-mono text-center text-lg tracking-[0.4em] h-11"
                     disabled={isLoading}
                     autoFocus
@@ -316,7 +309,7 @@ export function ChangeMasterPasswordModal({ open, onOpenChange, hasTotp, hasReco
                     placeholder="xxxxxxxxxxxxxxxx"
                     value={verifyCode}
                     onChange={(e) => setVerifyCode(e.target.value)}
-                    onKeyDown={(e) => e.key === 'Enter' && handleVerify()}
+                    onKeyDown={(e) => e.key === 'Enter' && handleVerifyAndRekey()}
                     className="font-mono"
                     disabled={isLoading}
                     autoFocus={!hasTotp}
@@ -326,126 +319,30 @@ export function ChangeMasterPasswordModal({ open, onOpenChange, hasTotp, hasReco
               )}
             </div>
 
+            <div className="rounded-xl border border-amber-100 bg-amber-50 p-3 text-sm text-amber-800 leading-relaxed">
+              <ShieldAlert className="w-4 h-4 inline mr-1.5 mb-0.5 text-amber-500" />
+              All secrets will be re-encrypted in your browser. Your recovery codes will be cleared.
+              You <strong>cannot</strong> change the master password again for <strong>10 days</strong>.
+            </div>
+
             <DialogFooter className="gap-2">
               <Button variant="ghost" className="border border-slate-200" onClick={handleClose} disabled={isLoading}>
                 Cancel
               </Button>
               <Button
                 className="flex-1 bg-indigo-600 hover:bg-indigo-700 text-white"
-                onClick={handleVerify}
-                disabled={isLoading || (codeType === 'totp' && verifyCode.length !== 6)}
+                onClick={handleVerifyAndRekey}
+                disabled={isLoading || (codeType === 'totp' && verifyCode.length !== 6) || !verifyCode.trim()}
               >
                 {isLoading
                   ? <><Loader2 className="w-4 h-4 mr-2 animate-spin" />Verifying…</>
-                  : 'Verify Identity'}
+                  : 'Reset Master Password'}
               </Button>
             </DialogFooter>
           </>
         )}
 
-        {/* ── Step 2: Enter passwords ──────────────────────────────────── */}
-        {step === 'passwords' && (
-          <>
-            <DialogHeader>
-              <DialogTitle className="flex items-center gap-2 text-slate-900 font-bold text-lg">
-                <RefreshCw className="w-5 h-5 text-indigo-500 shrink-0" />
-                Set New Master Password
-              </DialogTitle>
-              <DialogDescription className="pt-1 text-slate-600 leading-relaxed">
-                Enter your current password to decrypt your vault, then set a new one.
-                All secrets and files will be re-encrypted in your browser.
-              </DialogDescription>
-            </DialogHeader>
-
-            <div className="space-y-3">
-              <div className="space-y-1.5">
-                <Label>Current Master Password</Label>
-                <div className="relative">
-                  <Input
-                    type={showCurrent ? 'text' : 'password'}
-                    placeholder="Your current password"
-                    value={currentPassword}
-                    onChange={(e) => setCurrentPassword(e.target.value)}
-                    className="pr-10"
-                    autoFocus
-                  />
-                  <button
-                    type="button"
-                    className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600"
-                    onClick={() => setShowCurrent((v) => !v)}
-                  >
-                    {showCurrent ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
-                  </button>
-                </div>
-              </div>
-
-              <div className="space-y-1.5">
-                <Label>New Master Password</Label>
-                <div className="relative">
-                  <Input
-                    type={showNew ? 'text' : 'password'}
-                    placeholder="At least 8 characters"
-                    value={newPassword}
-                    onChange={(e) => setNewPassword(e.target.value)}
-                    className="pr-10"
-                  />
-                  <button
-                    type="button"
-                    className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600"
-                    onClick={() => setShowNew((v) => !v)}
-                  >
-                    {showNew ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
-                  </button>
-                </div>
-              </div>
-
-              <div className="space-y-1.5">
-                <Label>Confirm New Master Password</Label>
-                <div className="relative">
-                  <Input
-                    type={showConfirm ? 'text' : 'password'}
-                    placeholder="Repeat new password"
-                    value={confirmPassword}
-                    onChange={(e) => setConfirmPassword(e.target.value)}
-                    onKeyDown={(e) => e.key === 'Enter' && handleRekey()}
-                    className={cn('pr-10', confirmPassword && confirmPassword !== newPassword && 'border-red-400')}
-                  />
-                  <button
-                    type="button"
-                    className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600"
-                    onClick={() => setShowConfirm((v) => !v)}
-                  >
-                    {showConfirm ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
-                  </button>
-                </div>
-                {confirmPassword && confirmPassword !== newPassword && (
-                  <p className="text-xs text-red-500">Passwords do not match</p>
-                )}
-              </div>
-
-              <div className="rounded-xl border border-amber-100 bg-amber-50 p-3 text-sm text-amber-800 leading-relaxed">
-                <ShieldAlert className="w-4 h-4 inline mr-1.5 mb-0.5 text-amber-500" />
-                After changing, your recovery codes and 2FA vault unlock will be <strong>cleared</strong> and must be regenerated.
-                You cannot change the master password again for <strong>10 days</strong>.
-              </div>
-            </div>
-
-            <DialogFooter className="gap-2">
-              <Button variant="ghost" className="border border-slate-200" onClick={handleClose}>
-                Cancel
-              </Button>
-              <Button
-                className="flex-1 bg-indigo-600 hover:bg-indigo-700 text-white"
-                onClick={handleRekey}
-                disabled={!currentPassword || !newPassword || !confirmPassword || newPassword !== confirmPassword}
-              >
-                Re-encrypt &amp; Save
-              </Button>
-            </DialogFooter>
-          </>
-        )}
-
-        {/* ── Step 3: Re-keying progress ───────────────────────────────── */}
+        {/* ── Step 2: Re-keying progress ───────────────────────────────── */}
         {step === 'rekeying' && (
           <>
             <DialogHeader>
@@ -454,7 +351,7 @@ export function ChangeMasterPasswordModal({ open, onOpenChange, hasTotp, hasReco
                 Re-encrypting Your Vault…
               </DialogTitle>
               <DialogDescription className="pt-1 text-slate-600">
-                Please keep this window open. This may take a moment.
+                Please keep this window open. Do not close your browser.
               </DialogDescription>
             </DialogHeader>
 
@@ -462,7 +359,7 @@ export function ChangeMasterPasswordModal({ open, onOpenChange, hasTotp, hasReco
               <div className="w-full bg-slate-100 rounded-full h-2 overflow-hidden">
                 <div
                   className="bg-indigo-600 h-2 rounded-full transition-all duration-300"
-                  style={{ width: progress.total > 0 ? `${Math.round((progress.done / progress.total) * 100)}%` : '10%' }}
+                  style={{ width: `${progressPct}%` }}
                 />
               </div>
               <p className="text-sm text-center text-slate-500">
@@ -474,55 +371,64 @@ export function ChangeMasterPasswordModal({ open, onOpenChange, hasTotp, hasReco
           </>
         )}
 
-        {/* ── Step 4: Done — 15-second password reveal ─────────────────── */}
+        {/* ── Step 3: Reveal new password for 15 seconds ───────────────── */}
         {step === 'done' && (
           <>
             <DialogHeader>
               <DialogTitle className="flex items-center gap-2 text-emerald-600 font-bold text-lg">
                 <CheckCircle2 className="w-5 h-5 shrink-0" />
-                Master Password Changed
+                Your New Master Password
               </DialogTitle>
               <DialogDescription className="pt-1 text-slate-600 leading-relaxed">
-                Your vault has been re-encrypted successfully.
+                Your vault is now encrypted with the password below.
+                <strong className="text-red-600"> Save it now</strong> — it will not be shown again.
               </DialogDescription>
             </DialogHeader>
 
             <div className="space-y-4 py-1">
-              {/* New password display */}
               <div className="rounded-xl border-2 border-indigo-100 bg-indigo-50 p-4 space-y-2">
-                <p className="text-xs font-semibold text-indigo-600 uppercase tracking-wider">Your New Master Password</p>
+                <p className="text-xs font-semibold text-indigo-600 uppercase tracking-wider">New Master Password</p>
                 <div className="flex items-center gap-2">
                   <code className="flex-1 font-mono text-slate-900 text-sm break-all select-all bg-white rounded-lg px-3 py-2 border border-indigo-100">
-                    {finalPassword}
+                    {newPassword}
                   </code>
                   <button
                     onClick={copyPassword}
                     className="shrink-0 p-2 rounded-lg border border-indigo-200 bg-white hover:bg-indigo-50 transition-colors text-indigo-600"
+                    title="Copy"
                   >
                     {copied ? <Check className="w-4 h-4 text-emerald-500" /> : <Copy className="w-4 h-4" />}
                   </button>
                 </div>
               </div>
 
-              {/* Warning message */}
               <div className="rounded-xl border border-amber-100 bg-amber-50 p-3 text-sm text-amber-800 leading-relaxed">
                 <ShieldAlert className="w-4 h-4 inline mr-1.5 mb-0.5 text-amber-500" />
-                <strong>Save this password now.</strong> You cannot change your master password again for{' '}
-                <strong>10 days</strong>. Your recovery codes and 2FA vault unlock have been cleared — please regenerate them.
+                <strong>Save this password now.</strong> Your recovery codes and 2FA vault unlock have been cleared.
+                You cannot change your master password again for <strong>10 days</strong>.
               </div>
 
-              {/* Countdown */}
-              <p className="text-center text-sm text-slate-400">
-                This dialog closes automatically in{' '}
-                <span className={cn('font-bold tabular-nums', countdown <= 5 ? 'text-red-500' : 'text-slate-600')}>
-                  {countdown}s
-                </span>
-              </p>
+              <div className="flex items-center justify-center gap-2">
+                <div
+                  className={cn(
+                    'relative w-12 h-12 rounded-full flex items-center justify-center font-bold tabular-nums transition-colors',
+                    countdown <= 5 ? 'bg-red-50 text-red-600 border-2 border-red-200' : 'bg-slate-50 text-slate-700 border-2 border-slate-200'
+                  )}
+                >
+                  {countdown}
+                </div>
+                <p className="text-sm text-slate-500">
+                  Closing in <span className={cn('font-semibold', countdown <= 5 && 'text-red-600')}>{countdown}s</span>
+                </p>
+              </div>
             </div>
 
             <DialogFooter>
-              <Button className="w-full bg-indigo-600 hover:bg-indigo-700 text-white" onClick={handleClose}>
-                I&apos;ve saved my password — Done
+              <Button
+                className="w-full bg-indigo-600 hover:bg-indigo-700 text-white"
+                onClick={() => { onOpenChange(false); setTimeout(reset, 300); }}
+              >
+                I&apos;ve saved it — Close
               </Button>
             </DialogFooter>
           </>

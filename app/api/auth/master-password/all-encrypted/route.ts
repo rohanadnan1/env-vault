@@ -2,7 +2,8 @@ import { NextResponse } from 'next/server';
 import { auth } from '@/lib/auth';
 import { db } from '@/lib/db';
 
-// Returns every encrypted blob the user owns so the client can re-encrypt them.
+// Returns every encrypted blob the user owns along with the metadata needed
+// to reconstruct the AAD used during the original encryption.
 export async function GET() {
   const session = await auth();
   if (!session?.user?.id) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
@@ -10,49 +11,62 @@ export async function GET() {
   const userId = session.user.id;
 
   try {
-    const user = await db.user.findUnique({
-      where: { id: userId },
-      select: { vaultSalt: true },
-    });
-    if (!user) return NextResponse.json({ error: 'User not found' }, { status: 404 });
-
-    const projects = await db.project.findMany({
-      where: { userId },
-      select: { id: true },
-    });
+    const projects = await db.project.findMany({ where: { userId }, select: { id: true } });
     const projectIds = projects.map((p) => p.id);
-
     const environments = await db.environment.findMany({
       where: { projectId: { in: projectIds } },
       select: { id: true },
     });
     const envIds = environments.map((e) => e.id);
 
-    const [secrets, secretHistories, files, fileHistories] = await Promise.all([
+    const [secrets, secretHistories, files, fileHistories, fileComments] = await Promise.all([
       db.secret.findMany({
         where: { environmentId: { in: envIds } },
-        select: { id: true, valueEncrypted: true, iv: true },
+        select: { id: true, valueEncrypted: true, iv: true, keyName: true, environmentId: true },
       }),
       db.secretHistory.findMany({
         where: { secret: { environmentId: { in: envIds } } },
-        select: { id: true, valueEncrypted: true, iv: true },
+        select: {
+          id: true, valueEncrypted: true, iv: true,
+          secret: { select: { keyName: true, environmentId: true } },
+        },
       }),
       db.vaultFile.findMany({
         where: { environmentId: { in: envIds } },
-        select: { id: true, contentEncrypted: true, iv: true },
+        select: { id: true, contentEncrypted: true, iv: true, name: true, environmentId: true, folderId: true },
       }),
       db.fileHistory.findMany({
         where: { file: { environmentId: { in: envIds } } },
-        select: { id: true, contentEncrypted: true, iv: true },
+        select: {
+          id: true, contentEncrypted: true, iv: true, name: true,
+          file: { select: { environmentId: true, folderId: true } },
+        },
+      }),
+      db.fileComment.findMany({
+        where: { file: { environmentId: { in: envIds } }, isEncrypted: true },
+        select: { id: true, content: true, iv: true, fileId: true },
       }),
     ]);
 
     return NextResponse.json({
-      currentSalt: user.vaultSalt,
       secrets,
-      secretHistories,
+      secretHistories: secretHistories.map((h) => ({
+        id: h.id,
+        valueEncrypted: h.valueEncrypted,
+        iv: h.iv,
+        keyName: h.secret.keyName,
+        environmentId: h.secret.environmentId,
+      })),
       files,
-      fileHistories,
+      fileHistories: fileHistories.map((h) => ({
+        id: h.id,
+        contentEncrypted: h.contentEncrypted,
+        iv: h.iv,
+        name: h.name,
+        environmentId: h.file.environmentId,
+        folderId: h.file.folderId,
+      })),
+      fileComments,
     });
   } catch {
     return NextResponse.json({ error: 'Internal Server Error' }, { status: 500 });

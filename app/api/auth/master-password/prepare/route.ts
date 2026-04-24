@@ -27,7 +27,6 @@ export async function POST(req: Request) {
     });
     if (!user) return NextResponse.json({ error: 'User not found' }, { status: 404 });
 
-    // Enforce 10-day cooldown
     const cooldownMs = COOLDOWN_DAYS * 24 * 60 * 60 * 1000;
     if (user.masterPasswordChangedAt && Date.now() - user.masterPasswordChangedAt.getTime() < cooldownMs) {
       const nextAt = new Date(user.masterPasswordChangedAt.getTime() + cooldownMs).toISOString();

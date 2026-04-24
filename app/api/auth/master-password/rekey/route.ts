@@ -7,6 +7,7 @@ const COOLDOWN_DAYS = 10;
 
 const EncryptedItem = z.object({ id: z.string(), valueEncrypted: z.string(), iv: z.string() });
 const EncryptedFile = z.object({ id: z.string(), contentEncrypted: z.string(), iv: z.string() });
+const EncryptedComment = z.object({ id: z.string(), content: z.string(), iv: z.string() });
 
 const Schema = z.object({
   verifyId: z.string().min(1),
@@ -15,6 +16,7 @@ const Schema = z.object({
   secretHistories: z.array(EncryptedItem),
   files: z.array(EncryptedFile),
   fileHistories: z.array(EncryptedFile),
+  fileComments: z.array(EncryptedComment).default([]),
 });
 
 export async function POST(req: Request) {
@@ -25,7 +27,7 @@ export async function POST(req: Request) {
 
   try {
     const body = await req.json();
-    const { verifyId, newSalt, secrets, secretHistories, files, fileHistories } = Schema.parse(body);
+    const { verifyId, newSalt, secrets, secretHistories, files, fileHistories, fileComments } = Schema.parse(body);
 
     // Validate challenge
     const challenge = await db.loginChallenge.findUnique({ where: { id: verifyId } });
@@ -77,6 +79,10 @@ export async function POST(req: Request) {
       (await db.fileHistory.findMany({ where: { file: { environmentId: { in: [...envIds] } } }, select: { id: true } }))
         .map((h) => h.id)
     );
+    const ownedCommentIds = new Set(
+      (await db.fileComment.findMany({ where: { file: { environmentId: { in: [...envIds] } } }, select: { id: true } }))
+        .map((c) => c.id)
+    );
 
     if (secrets.some((s) => !ownedSecretIds.has(s.id))) {
       return NextResponse.json({ error: 'Unauthorized secret in payload' }, { status: 403 });
@@ -89,6 +95,9 @@ export async function POST(req: Request) {
     }
     if (fileHistories.some((h) => !ownedFileHistoryIds.has(h.id))) {
       return NextResponse.json({ error: 'Unauthorized file history in payload' }, { status: 403 });
+    }
+    if (fileComments.some((c) => !ownedCommentIds.has(c.id))) {
+      return NextResponse.json({ error: 'Unauthorized comment in payload' }, { status: 403 });
     }
 
     // Atomic update — single transaction
@@ -118,6 +127,9 @@ export async function POST(req: Request) {
       ),
       ...fileHistories.map((h) =>
         db.fileHistory.update({ where: { id: h.id }, data: { contentEncrypted: h.contentEncrypted, iv: h.iv } })
+      ),
+      ...fileComments.map((c) =>
+        db.fileComment.update({ where: { id: c.id }, data: { content: c.content, iv: c.iv } })
       ),
     ]);
 

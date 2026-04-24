@@ -19,7 +19,8 @@ export async function GET() {
     const recoveryCount = await db.recoveryCode.count({
       where: { userId: session.user.id, usedAt: null },
     });
-    const hasSecurity = hasTotp || recoveryCount > 0;
+    const hasRecoveryCodes = recoveryCount > 0;
+    const hasResetPath = hasTotp || hasRecoveryCodes;
 
     const changedAt = user.masterPasswordChangedAt;
     const cooldownMs = COOLDOWN_DAYS * 24 * 60 * 60 * 1000;
@@ -28,7 +29,7 @@ export async function GET() {
       ? new Date(changedAt.getTime() + cooldownMs).toISOString()
       : null;
 
-    return NextResponse.json({ hasSecurity, hasTotp, hasRecoveryCodes: recoveryCount > 0, onCooldown, nextChangeAt });
+    return NextResponse.json({ hasResetPath, hasTotp, hasRecoveryCodes, onCooldown, nextChangeAt });
   } catch {
     return NextResponse.json({ error: 'Internal Server Error' }, { status: 500 });
   }

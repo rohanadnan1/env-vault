@@ -12,7 +12,6 @@ import {
 } from "lucide-react";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle, CardFooter } from "@/components/ui/card";
 import { Label } from "@/components/ui/label";
-import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
 import { 
   Select, 
@@ -25,7 +24,6 @@ import { toast } from "sonner";
 import { TwoFactorSetup } from "./TwoFactorSetup";
 import { RecoveryCodesSection } from "./RecoveryCodesSection";
 import { SignOutAllDevicesModal } from "./SignOutAllDevicesModal";
-import { TwoFAVaultSetup } from "./TwoFAVaultSetup";
 import { ChangeMasterPasswordModal } from "./ChangeMasterPasswordModal";
 import { cn } from "@/lib/utils";
 import { Badge } from "@/components/ui/badge";
@@ -39,7 +37,7 @@ export function SecurityTab() {
   const [hasRecoveryCodes, setHasRecoveryCodes] = useState(false);
   const [showChangeMasterPw, setShowChangeMasterPw] = useState(false);
   const [masterPwStatus, setMasterPwStatus] = useState<{
-    hasSecurity: boolean; hasTotp: boolean; hasRecoveryCodes: boolean;
+    hasResetPath: boolean; hasRecoveryCodes: boolean; hasTotp: boolean;
     onCooldown: boolean; nextChangeAt: string | null;
   } | null>(null);
 
@@ -201,12 +199,12 @@ export function SecurityTab() {
           </div>
         </CardHeader>
         <CardContent className="p-6 space-y-4">
-          {!masterPwStatus?.hasSecurity && (
+          {!masterPwStatus?.hasResetPath && (
             <div className="p-4 bg-amber-50 rounded-xl border border-amber-100 flex gap-3">
               <AlertCircle className="w-5 h-5 text-amber-600 shrink-0 mt-0.5" />
               <div className="text-sm text-amber-800 leading-relaxed">
-                You need to set up <strong>2FA</strong> or generate <strong>recovery codes</strong> before you can change your master password.
-                This is required to verify your identity.
+                You need to set up <strong>2FA</strong> or generate <strong>recovery codes</strong> first.
+                This is required to verify your identity before resetting your master password.
               </div>
             </div>
           )}
@@ -219,10 +217,11 @@ export function SecurityTab() {
               </div>
             </div>
           )}
-          {masterPwStatus?.hasSecurity && !masterPwStatus.onCooldown && (
+          {masterPwStatus?.hasResetPath && !masterPwStatus.onCooldown && (
             <p className="text-sm text-slate-500 leading-relaxed">
-              All secrets and files will be decrypted and re-encrypted in your browser using the new password.
-              This requires verifying your identity with 2FA or a recovery code.
+              Verify your identity with {masterPwStatus.hasTotp && masterPwStatus.hasRecoveryCodes ? <><strong>2FA</strong> or a <strong>recovery code</strong></> : masterPwStatus.hasTotp ? <strong>2FA</strong> : <strong>a recovery code</strong>} and a new random master password will be generated.
+              All your secrets and files will be re-encrypted in your browser.
+              The new password is shown <strong>once for 15 seconds</strong> — you must save it immediately.
               After changing, you cannot change it again for <strong className="text-slate-700">10 days</strong>.
             </p>
           )}
@@ -230,10 +229,10 @@ export function SecurityTab() {
         <CardFooter className="bg-slate-50/50 border-t border-slate-100 px-6 py-4 flex justify-end">
           <Button
             className="bg-indigo-600 hover:bg-indigo-700 text-white rounded-xl shadow-md px-8"
-            disabled={!masterPwStatus?.hasSecurity || masterPwStatus.onCooldown}
+            disabled={!masterPwStatus?.hasResetPath || masterPwStatus.onCooldown}
             onClick={() => setShowChangeMasterPw(true)}
           >
-            Change Master Password
+            Reset Master Password
           </Button>
         </CardFooter>
       </Card>
@@ -281,9 +280,6 @@ export function SecurityTab() {
       {/* Recovery Codes */}
       <RecoveryCodesSection />
 
-      {/* 2FA Vault Unlock */}
-      <TwoFAVaultSetup is2FAEnabled={is2FAEnabled} />
-
       <TwoFactorSetup
         open={isSettingUp2FA}
         onOpenChange={setIsSettingUp2FA}
@@ -301,8 +297,8 @@ export function SecurityTab() {
         <ChangeMasterPasswordModal
           open={showChangeMasterPw}
           onOpenChange={setShowChangeMasterPw}
-          hasTotp={masterPwStatus.hasTotp}
           hasRecoveryCodes={masterPwStatus.hasRecoveryCodes}
+          hasTotp={masterPwStatus.hasTotp}
         />
       )}
     </div>
