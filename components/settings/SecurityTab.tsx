@@ -1,18 +1,27 @@
 "use client";
 
-import { useState, useEffect } from "react";
+import { useState, useEffect, useCallback } from "react";
 import {
   Lock,
   KeyRound,
   Smartphone,
   ShieldCheck,
   AlertCircle,
+  AlertTriangle,
   Loader2,
   MonitorX,
 } from "lucide-react";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle, CardFooter } from "@/components/ui/card";
 import { Label } from "@/components/ui/label";
 import { Button } from "@/components/ui/button";
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog";
 import { 
   Select, 
   SelectContent, 
@@ -22,16 +31,23 @@ import {
 } from "@/components/ui/select";
 import { toast } from "sonner";
 import { TwoFactorSetup } from "./TwoFactorSetup";
+import { TwoFAVaultSetup } from "./TwoFAVaultSetup";
 import { RecoveryCodesSection } from "./RecoveryCodesSection";
 import { SignOutAllDevicesModal } from "./SignOutAllDevicesModal";
 import { ChangeMasterPasswordModal } from "./ChangeMasterPasswordModal";
 import { cn } from "@/lib/utils";
 import { Badge } from "@/components/ui/badge";
+import {
+  syncVaultUnlockAlternativeCacheFromServer,
+  updateVaultUnlockAlternativeCache,
+} from "@/lib/vault-unlock-options-cache";
 
 export function SecurityTab() {
   const [autoLock, setAutoLock] = useState("15");
   const [is2FAEnabled, setIs2FAEnabled] = useState(false);
   const [isSettingUp2FA, setIsSettingUp2FA] = useState(false);
+  const [isRevoking2FA, setIsRevoking2FA] = useState(false);
+  const [showRevoke2FAModal, setShowRevoke2FAModal] = useState(false);
   const [isLoading, setIsLoading] = useState(true);
   const [showSignOutAll, setShowSignOutAll] = useState(false);
   const [hasRecoveryCodes, setHasRecoveryCodes] = useState(false);
@@ -41,6 +57,25 @@ export function SecurityTab() {
     onCooldown: boolean; nextChangeAt: string | null;
   } | null>(null);
 
+  const refreshMasterPasswordStatus = useCallback(async () => {
+    try {
+      const mpRes = await fetch("/api/auth/master-password/status");
+      if (mpRes.ok) {
+        setMasterPwStatus(await mpRes.json());
+      }
+    } catch {
+      // silent
+    }
+  }, []);
+
+  const handleRecoveryCodesStatusChange = useCallback((nextHasRecoveryCodes: boolean) => {
+    setHasRecoveryCodes((prev) => {
+      if (prev === nextHasRecoveryCodes) return prev;
+      void refreshMasterPasswordStatus();
+      return nextHasRecoveryCodes;
+    });
+  }, [refreshMasterPasswordStatus]);
+
   // Load status on mount
   useEffect(() => {
     const fetchStatus = async () => {
@@ -49,25 +84,26 @@ export function SecurityTab() {
         const saved = localStorage.getItem("envault_autolock");
         if (saved) setAutoLock(saved);
 
-        // Load 2FA status
-        const res = await fetch("/api/auth/totp/status");
-        if (res.ok) {
-          const data = await res.json();
-          setIs2FAEnabled(data.enabled);
+        const [totpStatusResult, recoveryStatusResult] = await Promise.allSettled([
+          fetch("/api/auth/totp/status"),
+          fetch("/api/recovery-codes/status"),
+        ]);
+
+        if (totpStatusResult.status === "fulfilled" && totpStatusResult.value.ok) {
+          const data = await totpStatusResult.value.json();
+          setIs2FAEnabled(!!data?.enabled);
         }
 
-        // Load recovery code count
-        const rcRes = await fetch("/api/recovery-codes/status");
-        if (rcRes.ok) {
-          const rcData = await rcRes.json();
-          setHasRecoveryCodes((rcData.remaining ?? 0) > 0);
+        if (recoveryStatusResult.status === "fulfilled" && recoveryStatusResult.value.ok) {
+          const rcData = await recoveryStatusResult.value.json();
+          setHasRecoveryCodes((rcData?.remaining ?? 0) > 0);
         }
 
         // Load master password change status
-        const mpRes = await fetch("/api/auth/master-password/status");
-        if (mpRes.ok) {
-          setMasterPwStatus(await mpRes.json());
-        }
+        await refreshMasterPasswordStatus();
+
+        // Keep vault unlock alternatives cache fresh after settings page loads.
+        void syncVaultUnlockAlternativeCacheFromServer();
       } catch (_err) {
         console.error("Failed to load security status");
       } finally {
@@ -75,7 +111,7 @@ export function SecurityTab() {
       }
     };
     fetchStatus();
-  }, []);
+  }, [refreshMasterPasswordStatus]);
 
   const handleAutoLockChange = (value: string | null) => {
     if (!value) return;
@@ -85,19 +121,23 @@ export function SecurityTab() {
   };
 
   const handleRevoke2FA = async () => {
-    const ok = confirm("Are you sure you want to disable two-factor authentication? This reduces your account security.");
-    if (!ok) return;
+    setIsRevoking2FA(true);
 
     try {
       const res = await fetch("/api/auth/totp/disable", { method: "POST" });
       if (res.ok) {
         setIs2FAEnabled(false);
+        updateVaultUnlockAlternativeCache({ has2FAVaultUnlock: false });
+        setShowRevoke2FAModal(false);
+        await refreshMasterPasswordStatus();
         toast.success("2FA has been disabled.");
       } else {
         toast.error("Failed to disable 2FA");
       }
     } catch (_err) {
       toast.error("An error occurred");
+    } finally {
+      setIsRevoking2FA(false);
     }
   };
 
@@ -111,6 +151,15 @@ export function SecurityTab() {
 
   return (
     <div className="space-y-6 pb-10">
+      {!is2FAEnabled && !hasRecoveryCodes && (
+        <div className="rounded-2xl border border-amber-200 bg-amber-50 px-4 py-3 flex items-start gap-3">
+          <AlertTriangle className="w-5 h-5 text-amber-600 shrink-0 mt-0.5" />
+          <p className="text-sm text-amber-800 leading-relaxed">
+            Your account is not fully secured yet. Enable <strong>2FA</strong> and generate <strong>recovery codes</strong> to protect access if you lose your password or device.
+          </p>
+        </div>
+      )}
+
       {/* Vault Auto-lock */}
       <Card className="border-slate-200 shadow-sm rounded-2xl overflow-hidden">
         <CardHeader className="bg-slate-50/50 border-b border-slate-100 flex flex-row items-center justify-between">
@@ -178,7 +227,8 @@ export function SecurityTab() {
             </div>
             <Button 
               variant={is2FAEnabled ? "destructive" : "default"}
-              onClick={() => is2FAEnabled ? handleRevoke2FA() : setIsSettingUp2FA(true)}
+              onClick={() => is2FAEnabled ? setShowRevoke2FAModal(true) : setIsSettingUp2FA(true)}
+              disabled={isRevoking2FA}
               className={cn("rounded-xl font-bold", !is2FAEnabled && "bg-indigo-600 hover:bg-indigo-700 shadow-md px-8")}
             >
               {is2FAEnabled ? "Revoke 2FA" : "Set up 2FA"}
@@ -278,12 +328,20 @@ export function SecurityTab() {
       </Card>
 
       {/* Recovery Codes */}
-      <RecoveryCodesSection />
+      <RecoveryCodesSection
+        onStatusChange={handleRecoveryCodesStatusChange}
+      />
+
+      <TwoFAVaultSetup is2FAEnabled={is2FAEnabled} />
 
       <TwoFactorSetup
         open={isSettingUp2FA}
         onOpenChange={setIsSettingUp2FA}
-        onSuccess={() => setIs2FAEnabled(true)}
+        onSuccess={() => {
+          setIs2FAEnabled(true);
+          void syncVaultUnlockAlternativeCacheFromServer();
+          void refreshMasterPasswordStatus();
+        }}
       />
 
       <SignOutAllDevicesModal
@@ -301,6 +359,47 @@ export function SecurityTab() {
           hasTotp={masterPwStatus.hasTotp}
         />
       )}
+
+      <Dialog open={showRevoke2FAModal} onOpenChange={(open) => !isRevoking2FA && setShowRevoke2FAModal(open)}>
+        <DialogContent className="rounded-2xl max-w-md">
+          <DialogHeader>
+            <DialogTitle>Disable Two-Factor Authentication?</DialogTitle>
+            <DialogDescription>
+              Turning off 2FA lowers account security and removes authenticator-based verification.
+            </DialogDescription>
+          </DialogHeader>
+
+          <div className="p-3 bg-amber-50 border border-amber-100 rounded-xl text-sm text-amber-800">
+            Keep recovery codes ready before disabling 2FA so you still have a secure fallback.
+          </div>
+
+          <DialogFooter className="gap-2">
+            <Button
+              variant="outline"
+              className="rounded-xl"
+              onClick={() => setShowRevoke2FAModal(false)}
+              disabled={isRevoking2FA}
+            >
+              Cancel
+            </Button>
+            <Button
+              variant="destructive"
+              className="rounded-xl"
+              onClick={handleRevoke2FA}
+              disabled={isRevoking2FA}
+            >
+              {isRevoking2FA ? (
+                <span className="flex items-center gap-2">
+                  <Loader2 className="w-4 h-4 animate-spin" />
+                  Disabling...
+                </span>
+              ) : (
+                "Disable 2FA"
+              )}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }

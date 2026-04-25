@@ -6,6 +6,34 @@ import { db } from "./db";
 import bcrypt from "bcryptjs";
 import { authConfig } from "./auth.config";
 
+const SESSION_VERSION_CHECK_INTERVAL_MS = 60_000;
+
+type SessionVersionLookupResult =
+  | { status: "ok"; sessionVersion: number | null }
+  | { status: "unavailable" };
+
+async function lookupSessionVersion(userId: string): Promise<SessionVersionLookupResult> {
+  try {
+    const dbUser = await db.user.findUnique({
+      where: { id: userId },
+      select: { sessionVersion: true },
+    });
+
+    return {
+      status: "ok",
+      sessionVersion: dbUser?.sessionVersion ?? null,
+    };
+  } catch (error) {
+    // Keep existing sessions alive during transient DB/network outages.
+    // We catch broadly because Prisma can throw PrismaClientKnownRequestError,
+    // PrismaClientInitializationError, or raw connection errors depending on
+    // the pool state — all of which should be treated as a temporary outage.
+    const msg = error instanceof Error ? error.message : String(error);
+    console.warn(`[AUTH] Skipping sessionVersion check due to DB error: ${msg}`);
+    return { status: "unavailable" };
+  }
+}
+
 export const { handlers, auth, signIn, signOut } = NextAuth({
   ...authConfig,
   adapter: PrismaAdapter(db),
@@ -13,35 +41,69 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
   callbacks: {
     ...authConfig.callbacks,
     async jwt({ token, user, trigger }) {
-      if (user) {
-        // Initial sign-in: embed sessionVersion
-        const dbUser = await db.user.findUnique({
-          where: { id: user.id as string },
-          select: { sessionVersion: true },
-        });
-        token.id = user.id;
-        token.sessionVersion = dbUser?.sessionVersion ?? 1;
-      } else if (trigger === 'update') {
-        // Forced refresh (keep current device after sign-out-all)
-        if (token.id) {
-          const dbUser = await db.user.findUnique({
-            where: { id: token.id as string },
-            select: { sessionVersion: true },
-          });
-          if (!dbUser) return null;
-          token.sessionVersion = dbUser.sessionVersion;
+      try {
+        if (user) {
+          // Initial sign-in: embed sessionVersion when available.
+          const userId = user.id as string;
+          const result = await lookupSessionVersion(userId);
+
+          token.id = userId;
+          token.sessionVersion =
+            result.status === "ok" && result.sessionVersion !== null
+              ? result.sessionVersion
+              : (token.sessionVersion as number | undefined) ?? 1;
+          token.sessionVersionCheckedAt = Date.now();
+        } else if (trigger === 'update') {
+          // Forced refresh (keep current device after sign-out-all)
+          if (token.id) {
+            const result = await lookupSessionVersion(token.id as string);
+
+            if (result.status === "ok") {
+              if (result.sessionVersion === null) return null;
+              token.sessionVersion = result.sessionVersion;
+            }
+
+            token.sessionVersionCheckedAt = Date.now();
+          }
+        } else if (token.id) {
+          const now = Date.now();
+          const lastChecked = Number(token.sessionVersionCheckedAt ?? 0);
+
+          // Throttle DB checks to avoid request amplification.
+          if (now - lastChecked >= SESSION_VERSION_CHECK_INTERVAL_MS) {
+            // Normal request: validate sessionVersion to detect sign-out-all.
+            const result = await lookupSessionVersion(token.id as string);
+
+            if (result.status === "ok") {
+              const tokenVersion =
+                typeof token.sessionVersion === "number"
+                  ? token.sessionVersion
+                  : (result.sessionVersion ?? 1);
+
+              token.sessionVersion = tokenVersion;
+              token.sessionVersionCheckedAt = now;
+
+              if (result.sessionVersion === null || result.sessionVersion !== tokenVersion) {
+                return null; // invalidate — user was signed out from all devices
+              }
+            } else {
+              // DB unavailable: keep existing token and retry later.
+              token.sessionVersionCheckedAt = now;
+            }
+          }
         }
-      } else if (token.id) {
-        // Normal request: validate sessionVersion to detect sign-out-all
-        const dbUser = await db.user.findUnique({
-          where: { id: token.id as string },
-          select: { sessionVersion: true },
-        });
-        if (!dbUser || dbUser.sessionVersion !== (token.sessionVersion as number)) {
-          return null; // invalidate — user was signed out from all devices
-        }
+        return token;
+      } catch (err) {
+        // Last-resort guard: if an error escapes lookupSessionVersion (e.g. a
+        // Prisma connection-pool rejection that bypasses the inner try-catch),
+        // keep the existing session alive rather than invalidating it.
+        // This prevents a DB outage from signing every user out simultaneously.
+        console.warn(
+          '[AUTH] Unexpected JWT callback error — preserving session:',
+          err instanceof Error ? err.message : String(err)
+        );
+        return token;
       }
-      return token;
     },
     async session({ session, token }) {
       if (session.user && token.id) {

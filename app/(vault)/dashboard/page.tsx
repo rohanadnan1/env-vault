@@ -4,7 +4,7 @@ import { CreateProjectModal } from '@/components/vault/CreateProjectModal';
 import Link from 'next/link';
 import { Card, CardHeader, CardTitle, CardDescription, CardContent } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
-import { FolderKanban, ShieldCheck, Clock, AlertTriangle } from 'lucide-react';
+import { FolderKanban, ShieldCheck, Clock, AlertTriangle, ShieldOff } from 'lucide-react';
 
 async function getProjects(userId: string) {
   try {
@@ -32,11 +32,48 @@ async function getProjects(userId: string) {
   }
 }
 
+async function getAccountSecurityStatus(userId: string) {
+  try {
+    const [user, recoveryCodesRemaining] = await Promise.all([
+      db.user.findUnique({
+        where: { id: userId },
+        select: { totpSecret: true, twoFAEncryptedMaster: true },
+      }),
+      db.recoveryCode.count({
+        where: { userId, usedAt: null },
+      }),
+    ]);
+
+    return {
+      hasTotp: !!user?.totpSecret,
+      has2FAVaultUnlock: !!user?.twoFAEncryptedMaster,
+      hasRecoveryCodes: recoveryCodesRemaining > 0,
+      loadError: false,
+    } as const;
+  } catch (error) {
+    console.error('[DASHBOARD_SECURITY_STATUS]', error);
+    return {
+      hasTotp: false,
+      has2FAVaultUnlock: false,
+      hasRecoveryCodes: false,
+      loadError: true,
+    } as const;
+  }
+}
+
 export default async function DashboardPage() {
   const session = await auth();
   if (!session?.user?.id) return null;
 
-  const { projects, loadError } = await getProjects(session.user.id);
+  const [{ projects, loadError }, security] = await Promise.all([
+    getProjects(session.user.id),
+    getAccountSecurityStatus(session.user.id),
+  ]);
+
+  // Show warning whenever the user has NO vault recovery path:
+  // neither recovery codes nor 2FA vault unlock is configured.
+  // This is always true right after a master key reset (both are cleared then).
+  const showRecoveryWarning = !security.loadError && !security.hasRecoveryCodes && !security.has2FAVaultUnlock;
 
   return (
     <div className="space-y-8 max-w-7xl mx-auto">
@@ -44,6 +81,38 @@ export default async function DashboardPage() {
         <div className="rounded-lg border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-800 flex items-center gap-2">
           <AlertTriangle className="w-4 h-4 shrink-0" />
           Some data is temporarily unavailable. Your vault session is still active; retry in a moment.
+        </div>
+      )}
+
+      {showRecoveryWarning && (
+        <div className="rounded-xl border-2 border-rose-200 bg-rose-50 p-4 flex items-start gap-4">
+          <div className="p-2 rounded-lg bg-rose-100 shrink-0 mt-0.5">
+            <ShieldOff className="w-5 h-5 text-rose-600" />
+          </div>
+          <div className="flex-1 min-w-0">
+            <p className="font-bold text-rose-900 text-sm">Your vault has no recovery method</p>
+            <p className="text-rose-700 text-xs mt-1 leading-relaxed">
+              If you forget your master password you will permanently lose access to your vault.
+              Set up at least one of the following to protect your account:
+            </p>
+            <ul className="mt-2 space-y-1 text-xs text-rose-700">
+              <li className="flex items-center gap-1.5">
+                <span className="w-1 h-1 rounded-full bg-rose-400 shrink-0" />
+                <strong>Recovery codes</strong> — 30 one-time backup codes
+              </li>
+              <li className="flex items-center gap-1.5">
+                <span className="w-1 h-1 rounded-full bg-rose-400 shrink-0" />
+                <strong>2FA vault unlock</strong> — unlock with your authenticator app instead of your master password
+              </li>
+            </ul>
+            <Link
+              href="/settings?tab=security"
+              className="inline-flex items-center gap-1 mt-3 text-xs font-bold text-rose-800 bg-rose-100 hover:bg-rose-200 border border-rose-200 rounded-lg px-3 py-1.5 transition-colors"
+            >
+              <ShieldCheck className="w-3.5 h-3.5" />
+              Go to Security Settings
+            </Link>
+          </div>
         </div>
       )}
 

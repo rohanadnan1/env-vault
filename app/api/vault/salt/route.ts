@@ -3,6 +3,16 @@ import { auth } from '@/lib/auth';
 import { db } from '@/lib/db';
 import crypto from 'crypto';
 
+function isDatabaseUnavailable(error: unknown) {
+  if (typeof error === 'object' && error && 'code' in error) {
+    const code = (error as { code?: string }).code;
+    if (code === 'P1001') return true;
+  }
+
+  const message = error instanceof Error ? error.message : String(error);
+  return message.includes("Can't reach database server") || message.includes('Timed out fetching a new connection');
+}
+
 export async function GET() {
   try {
     const session = await auth();
@@ -42,6 +52,7 @@ export async function GET() {
       return NextResponse.json({
         salt: user.vaultSalt,
         verificationSample,
+        isNewSetup: false,
       });
     }
 
@@ -54,8 +65,17 @@ export async function GET() {
     return NextResponse.json({
       salt: newSalt,
       verificationSample,
+      isNewSetup: true,
     });
   } catch (error) {
+    if (isDatabaseUnavailable(error)) {
+      return NextResponse.json(
+        { error: 'Database is temporarily unavailable. Please retry shortly.' },
+        { status: 503 }
+      );
+    }
+
+    console.error('[VAULT_SALT] Unexpected error:', error);
     return NextResponse.json({ error: 'Internal Server Error' }, { status: 500 });
   }
 }

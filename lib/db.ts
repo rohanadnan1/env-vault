@@ -6,19 +6,22 @@ function getDatabaseUrl() {
   const raw = process.env.DATABASE_URL;
   if (!raw) return raw;
 
-  const isServerlessProd = process.env.VERCEL === '1' || process.env.NODE_ENV === 'production';
-  if (!isServerlessProd) return raw;
-
   try {
     const url = new URL(raw);
+    const isServerlessProd = process.env.VERCEL === '1' || process.env.NODE_ENV === 'production';
 
-    // Prevent exhausting pooled sessions on serverless cold starts.
-    if (!url.searchParams.has('connection_limit')) {
-      url.searchParams.set('connection_limit', '1');
+    // Fail fast on unreachable DBs so one outage does not stall the whole app.
+    if (!url.searchParams.has('connect_timeout')) {
+      url.searchParams.set('connect_timeout', '5');
     }
 
     if (!url.searchParams.has('pool_timeout')) {
-      url.searchParams.set('pool_timeout', '20');
+      url.searchParams.set('pool_timeout', '8');
+    }
+
+    // Prevent exhausting pooled sessions on serverless cold starts.
+    if (isServerlessProd && !url.searchParams.has('connection_limit')) {
+      url.searchParams.set('connection_limit', '1');
     }
 
     return url.toString();

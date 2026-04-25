@@ -1,6 +1,7 @@
 "use client";
 
 import { useState } from "react";
+import { useSearchParams } from "next/navigation";
 import { 
   User, 
   ShieldCheck, 
@@ -20,7 +21,9 @@ import { DangerZone } from "@/components/settings/DangerZone";
 // Note: Shares tab will show existing share management
 
 export default function SettingsPage() {
-  const [activeTab, setActiveTab] = useState("profile");
+  const searchParams = useSearchParams();
+  const initialTab = searchParams.get("tab") === "security" ? "security" : "profile";
+  const [activeTab, setActiveTab] = useState(initialTab);
 
   return (
     <div className="max-w-5xl mx-auto p-6 lg:py-10">

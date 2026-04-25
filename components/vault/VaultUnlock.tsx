@@ -1,6 +1,7 @@
 "use client";
 
 import { useState, useEffect } from 'react';
+import { useSession } from 'next-auth/react';
 import { useVaultStore } from '@/lib/store/vaultStore';
 import { deriveVaultKey } from '@/lib/crypto/vault';
 import { decryptSecret } from '@/lib/crypto/decrypt';
@@ -25,11 +26,33 @@ import {
   KeyRound,
   Smartphone,
   ChevronLeft,
+  Info,
 } from 'lucide-react';
 import { toast } from 'sonner';
 import { cn } from '@/lib/utils';
+import {
+  readVaultUnlockAlternativeCache,
+  syncVaultUnlockAlternativeCacheFromServer,
+  updateVaultUnlockAlternativeCache,
+} from '@/lib/vault-unlock-options-cache';
 
 type UnlockMode = 'password' | 'recovery' | 'totp';
+
+const VAULT_SALT_CACHE_KEY = 'envault_vault_salt';
+const VAULT_SALT_UNAVAILABLE_ERROR = 'VAULT_SALT_UNAVAILABLE';
+
+type VerificationSample = {
+  keyName: string;
+  valueEncrypted: string;
+  iv: string;
+  environmentId: string;
+} | null;
+
+type VaultSaltPayload = {
+  salt: string;
+  verificationSample: VerificationSample;
+  isNewSetup: boolean;
+};
 
 export function VaultUnlock() {
   const [mode, setMode] = useState<UnlockMode>('password');
@@ -41,6 +64,12 @@ export function VaultUnlock() {
   const [enrollBio, setEnrollBio] = useState(false);
   const [error, setError] = useState(false);
   const [has2FAVaultUnlock, setHas2FAVaultUnlock] = useState(false);
+  const [hasRecoveryCodes, setHasRecoveryCodes] = useState(false);
+  const [isCheckingAlternatives, setIsCheckingAlternatives] = useState(true);
+  const [isNewSetup, setIsNewSetup] = useState(false);
+
+  const { data: session } = useSession();
+  const userId = session?.user?.id ?? '';
 
   const unlock = useVaultStore((s) => s.unlock);
   const {
@@ -50,27 +79,73 @@ export function VaultUnlock() {
     setBiometricEnrolled,
   } = useVaultStore();
 
+  // Detect first-time setup on mount so the info panel is visible before submission
   useEffect(() => {
+    fetch('/api/vault/salt', { cache: 'no-store' })
+      .then((r) => r.ok ? r.json() : null)
+      .then((data) => { if (data?.isNewSetup) setIsNewSetup(true); })
+      .catch(() => { /* silent — salt fetch will retry on submit */ });
+  }, []);
+
+  useEffect(() => {
+    if (!userId) return; // wait until session resolves
+    let isMounted = true;
+
     isBiometricSupported().then((isSupported) => {
       setBiometricSupport(isSupported);
-      if (isSupported && !isBiometricEnrolled()) setEnrollBio(true);
+      if (isSupported && !isBiometricEnrolled(userId)) setEnrollBio(true);
     });
-    setBiometricEnrolled(isBiometricEnrolled());
+    setBiometricEnrolled(isBiometricEnrolled(userId));
 
-    fetch('/api/auth/totp/vault-setup')
-      .then((r) => r.json())
-      .then((d) => setHas2FAVaultUnlock(!!d.enabled))
-      .catch(() => {});
-  }, [setBiometricSupport, setBiometricEnrolled]);
+    const cachedAlternativeState = readVaultUnlockAlternativeCache();
+    const cached2FA = cachedAlternativeState.has2FAVaultUnlock;
+    const cachedRecovery = cachedAlternativeState.hasRecoveryCodes;
+
+    if (cached2FA !== null && cachedRecovery !== null) {
+      setHas2FAVaultUnlock(cached2FA ?? false);
+      setHasRecoveryCodes(cachedRecovery ?? false);
+      setIsCheckingAlternatives(false);
+    }
+
+    syncVaultUnlockAlternativeCacheFromServer()
+      .then((latest) => {
+        if (!isMounted) return;
+
+        const nextHas2FA = latest.has2FAVaultUnlock ?? cached2FA ?? false;
+        const nextHasRecovery = latest.hasRecoveryCodes ?? cachedRecovery ?? false;
+
+        setHas2FAVaultUnlock(nextHas2FA);
+        setHasRecoveryCodes(nextHasRecovery);
+        setIsCheckingAlternatives(false);
+      })
+      .catch(() => {
+        if (!isMounted) return;
+        setIsCheckingAlternatives(false);
+      });
+
+    return () => {
+      isMounted = false;
+    };
+  }, [userId, setBiometricSupport, setBiometricEnrolled]);
+
+  useEffect(() => {
+    if (mode === 'recovery' && !hasRecoveryCodes) {
+      setMode(has2FAVaultUnlock ? 'totp' : 'password');
+      setError(false);
+      setRecoveryCode('');
+      return;
+    }
+
+    if (mode === 'totp' && !has2FAVaultUnlock) {
+      setMode(hasRecoveryCodes ? 'recovery' : 'password');
+      setError(false);
+      setTotpCode('');
+    }
+  }, [mode, hasRecoveryCodes, has2FAVaultUnlock]);
 
   const verifyDerivedKey = async (
     key: CryptoKey,
-    verificationSample?: {
-      keyName: string;
-      valueEncrypted: string;
-      iv: string;
-      environmentId: string;
-    } | null
+    verificationSample?: VerificationSample
   ) => {
     if (!verificationSample) return true;
     const aad = `${verificationSample.keyName}:${verificationSample.environmentId}`;
@@ -78,10 +153,57 @@ export function VaultUnlock() {
     return true;
   };
 
+  const readCachedVaultSalt = () => {
+    try {
+      return localStorage.getItem(VAULT_SALT_CACHE_KEY);
+    } catch {
+      return null;
+    }
+  };
+
+  const writeCachedVaultSalt = (salt: string) => {
+    try {
+      localStorage.setItem(VAULT_SALT_CACHE_KEY, salt);
+    } catch {
+      // Ignore storage failures.
+    }
+  };
+
+  const fetchVaultSalt = async (): Promise<VaultSaltPayload> => {
+    try {
+      const res = await fetch('/api/vault/salt', { cache: 'no-store' });
+
+      if (res.ok) {
+        const data = await res.json();
+        if (!data?.salt) throw new Error(VAULT_SALT_UNAVAILABLE_ERROR);
+
+        writeCachedVaultSalt(data.salt);
+        if (data.isNewSetup) setIsNewSetup(true);
+
+        return {
+          salt: data.salt,
+          verificationSample: data.verificationSample ?? null,
+          isNewSetup: !!data.isNewSetup,
+        };
+      }
+    } catch {
+      // Fallback to cached salt when server/auth is temporarily unavailable.
+    }
+
+    const cachedSalt = readCachedVaultSalt();
+    if (cachedSalt) {
+      return {
+        salt: cachedSalt,
+        verificationSample: null,
+        isNewSetup: false,
+      };
+    }
+
+    throw new Error(VAULT_SALT_UNAVAILABLE_ERROR);
+  };
+
   const doUnlock = async (masterPw: string, enroll: boolean) => {
-    const res = await fetch('/api/vault/salt');
-    if (!res.ok) throw new Error('Failed to fetch salt');
-    const { salt, verificationSample } = await res.json();
+    const { salt, verificationSample } = await fetchVaultSalt();
 
     return new Promise<void>((resolve, reject) => {
       setTimeout(async () => {
@@ -91,7 +213,7 @@ export function VaultUnlock() {
 
           if (enroll) {
             try {
-              await enrollBiometrics(masterPw);
+              await enrollBiometrics(masterPw, userId);
               setBiometricEnrolled(true);
               toast.success('Biometric unlock enabled');
             } catch {
@@ -112,17 +234,16 @@ export function VaultUnlock() {
     setIsScanning(true);
     setError(false);
     try {
-      const decryptedPw = await unlockWithBiometrics();
-      const res = await fetch('/api/vault/salt');
-      if (!res.ok) throw new Error('Failed to fetch salt');
-      const { salt, verificationSample } = await res.json();
-      const key = await deriveVaultKey(decryptedPw, salt);
-      await verifyDerivedKey(key, verificationSample);
-      unlock(key);
+      const decryptedPw = await unlockWithBiometrics(userId);
+      await doUnlock(decryptedPw, false);
       toast.success('Vault unlocked with Touch ID');
     } catch (err: any) {
       if (err.name !== 'NotAllowedError') {
-        toast.error('Biometric unlock failed. Please use your password.');
+        if (err instanceof Error && err.message === VAULT_SALT_UNAVAILABLE_ERROR) {
+          toast.error('Server is temporarily unavailable. Try again in a few seconds.');
+        } else {
+          toast.error('Biometric unlock failed. Please use your password.');
+        }
       }
     } finally {
       setIsScanning(false);
@@ -135,9 +256,14 @@ export function VaultUnlock() {
     setError(false);
     try {
       await doUnlock(password, enrollBio);
-    } catch {
-      setError(true);
-      toast.error('Incorrect master password.');
+    } catch (err) {
+      if (err instanceof Error && err.message === VAULT_SALT_UNAVAILABLE_ERROR) {
+        toast.error('Server is temporarily unavailable. Please retry shortly.');
+      } else {
+        setError(true);
+        toast.error('Incorrect master password.');
+      }
+    } finally {
       setIsLoading(false);
     }
   };
@@ -167,9 +293,14 @@ export function VaultUnlock() {
       );
       await doUnlock(masterPw, false);
       toast.success('Vault unlocked with recovery code');
-    } catch {
-      setError(true);
-      toast.error('Recovery code failed. Check the code and try again.');
+    } catch (err) {
+      if (err instanceof Error && err.message === VAULT_SALT_UNAVAILABLE_ERROR) {
+        toast.error('Code accepted, but server is temporarily unavailable. Please retry in a moment.');
+      } else {
+        setError(true);
+        toast.error('Recovery code failed. Check the code and try again.');
+      }
+    } finally {
       setIsLoading(false);
     }
   };
@@ -198,9 +329,14 @@ export function VaultUnlock() {
       );
       await doUnlock(masterPw, false);
       toast.success('Vault unlocked with 2FA');
-    } catch {
-      setError(true);
-      toast.error('2FA unlock failed. Try again.');
+    } catch (err) {
+      if (err instanceof Error && err.message === VAULT_SALT_UNAVAILABLE_ERROR) {
+        toast.error('2FA verified, but server is temporarily unavailable. Please retry shortly.');
+      } else {
+        setError(true);
+        toast.error('2FA unlock failed. Try again.');
+      }
+    } finally {
       setIsLoading(false);
     }
   };
@@ -218,12 +354,16 @@ export function VaultUnlock() {
               <ShieldCheck className="w-8 h-8 text-indigo-600" />
             )}
           </div>
-          <h2 className="text-2xl font-bold text-slate-900 tracking-tight">Unlock Vault</h2>
+          <h2 className="text-2xl font-bold text-slate-900 tracking-tight">
+            {isNewSetup ? 'Set Your Master Password' : 'Unlock Vault'}
+          </h2>
           <p className="text-slate-500 text-sm mt-1">
             {mode === 'recovery'
               ? 'Enter one of your recovery codes'
               : mode === 'totp'
               ? 'Enter your authenticator app code'
+              : isNewSetup
+              ? 'Choose a strong password to encrypt your vault'
               : 'Unlock your environment variables'}
           </p>
         </div>
@@ -309,6 +449,20 @@ export function VaultUnlock() {
               </label>
             )}
 
+            {isNewSetup && (
+              <div className="rounded-xl border border-indigo-100 bg-indigo-50 p-3 space-y-2">
+                <div className="flex items-center gap-1.5">
+                  <Info className="w-3.5 h-3.5 text-indigo-500 shrink-0" />
+                  <p className="text-xs font-bold text-indigo-800">This is your only chance to choose your own password</p>
+                </div>
+                <ul className="space-y-1 pl-5 text-[11px] text-indigo-700 leading-relaxed list-disc">
+                  <li>Pick any password you want — it encrypts everything in your vault.</li>
+                  <li>Write it down and store it somewhere safe. <strong>We cannot recover it for you.</strong></li>
+                  <li>If you ever need to reset it later, the system will generate a random password for you — you won&apos;t be able to choose a new one yourself.</li>
+                </ul>
+              </div>
+            )}
+
             {error && (
               <div className="p-3 bg-rose-50 border border-rose-100 rounded-xl">
                 <p className="text-rose-600 text-xs font-bold text-center">Incorrect password. Please try again.</p>
@@ -325,32 +479,48 @@ export function VaultUnlock() {
                   <Loader2 className="w-4 h-4 animate-spin" />
                   Unlocking...
                 </span>
+              ) : isNewSetup ? (
+                'Set Master Password'
               ) : (
                 'Unlock Vault'
               )}
             </Button>
 
             {/* Alternative unlock methods */}
-            <div className="flex flex-col gap-2 pt-1">
-              <button
-                type="button"
-                onClick={() => { setMode('recovery'); setError(false); }}
-                className="text-xs text-slate-400 hover:text-indigo-600 transition-colors font-medium flex items-center justify-center gap-1"
-              >
-                <KeyRound className="w-3.5 h-3.5" />
-                Use a recovery code
-              </button>
-              {has2FAVaultUnlock && (
-                <button
-                  type="button"
-                  onClick={() => { setMode('totp'); setError(false); }}
-                  className="text-xs text-slate-400 hover:text-indigo-600 transition-colors font-medium flex items-center justify-center gap-1"
-                >
-                  <Smartphone className="w-3.5 h-3.5" />
-                  Unlock with 2FA
-                </button>
-              )}
-            </div>
+            {isCheckingAlternatives ? (
+              <div className="flex items-center justify-center gap-2 pt-1 text-[11px] text-slate-400">
+                <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                Checking unlock alternatives...
+              </div>
+            ) : (has2FAVaultUnlock || hasRecoveryCodes) ? (
+              <div className="flex flex-col gap-2 pt-1">
+                {has2FAVaultUnlock && (
+                  <button
+                    type="button"
+                    onClick={() => { setMode('totp'); setError(false); setRecoveryCode(''); }}
+                    className="text-xs text-slate-400 hover:text-indigo-600 transition-colors font-medium flex items-center justify-center gap-1"
+                  >
+                    <Smartphone className="w-3.5 h-3.5" />
+                    Unlock with 2FA
+                  </button>
+                )}
+                {hasRecoveryCodes && (
+                  <button
+                    type="button"
+                    onClick={() => { setMode('recovery'); setError(false); setTotpCode(''); }}
+                    className="text-xs text-slate-400 hover:text-indigo-600 transition-colors font-medium flex items-center justify-center gap-1"
+                  >
+                    <KeyRound className="w-3.5 h-3.5" />
+                    Use a recovery code
+                  </button>
+                )}
+              </div>
+            ) : (
+              <p className="text-center text-[11px] text-slate-400 pt-1">
+                No alternative unlock methods are configured yet.
+              </p>
+            )}
+
           </form>
         )}
 

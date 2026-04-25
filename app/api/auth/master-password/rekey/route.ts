@@ -17,6 +17,9 @@ const Schema = z.object({
   files: z.array(EncryptedFile),
   fileHistories: z.array(EncryptedFile),
   fileComments: z.array(EncryptedComment).default([]),
+  // Orphaned history revisions that could not be decrypted (unrecoverable after salt
+  // change) — deleted atomically so they don't remain as permanently corrupt blobs.
+  deleteFileHistoryIds: z.array(z.string()).default([]),
 });
 
 export async function POST(req: Request) {
@@ -27,7 +30,7 @@ export async function POST(req: Request) {
 
   try {
     const body = await req.json();
-    const { verifyId, newSalt, secrets, secretHistories, files, fileHistories, fileComments } = Schema.parse(body);
+    const { verifyId, newSalt, secrets, secretHistories, files, fileHistories, fileComments, deleteFileHistoryIds } = Schema.parse(body);
 
     // Validate challenge
     const challenge = await db.loginChallenge.findUnique({ where: { id: verifyId } });
@@ -99,6 +102,9 @@ export async function POST(req: Request) {
     if (fileComments.some((c) => !ownedCommentIds.has(c.id))) {
       return NextResponse.json({ error: 'Unauthorized comment in payload' }, { status: 403 });
     }
+    if (deleteFileHistoryIds.some((id) => !ownedFileHistoryIds.has(id))) {
+      return NextResponse.json({ error: 'Unauthorized file history in delete list' }, { status: 403 });
+    }
 
     // Atomic update — single transaction
     await db.$transaction([
@@ -111,6 +117,7 @@ export async function POST(req: Request) {
           twoFAEncryptedMaster: null,
           twoFAMasterIv: null,
           twoFAUnlockToken: null,
+          codesGeneratedAt: null,
         },
       }),
       // Delete all recovery codes (they encrypt the old master password)
@@ -131,6 +138,10 @@ export async function POST(req: Request) {
       ...fileComments.map((c) =>
         db.fileComment.update({ where: { id: c.id }, data: { content: c.content, iv: c.iv } })
       ),
+      // Delete orphan history revisions that could not be decrypted.
+      ...(deleteFileHistoryIds.length > 0
+        ? [db.fileHistory.deleteMany({ where: { id: { in: deleteFileHistoryIds } } })]
+        : []),
     ]);
 
     return NextResponse.json({ status: 'ok' });

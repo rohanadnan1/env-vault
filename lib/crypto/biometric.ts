@@ -3,11 +3,14 @@
  * Allows deriving a local encryption key from Touch ID / Face ID
  */
 
-const CRED_ID_KEY = 'envault_bio_cred_id';
-const PAYLOAD_KEY = 'envault_bio_payload';
-const IV_KEY = 'envault_bio_iv';
+// Keys are namespaced per user so that two accounts on the same browser
+// never share or overwrite each other's biometric enrollment data.
+const credIdKey  = (uid: string) => `envault_bio_cred_id_${uid}`;
+const payloadKey = (uid: string) => `envault_bio_payload_${uid}`;
+const ivKey      = (uid: string) => `envault_bio_iv_${uid}`;
+
 // Constant salt for PRF - domain separated by WebAuthn spec
-const PRF_SALT = new Uint8Array(32).fill(7); 
+const PRF_SALT = new Uint8Array(32).fill(7);
 
 interface WebAuthnPRFExtension {
   prf?: {
@@ -42,14 +45,16 @@ export async function isBiometricSupported(): Promise<boolean> {
   return true; // We will attempt and catch errors during enrollment/scan
 }
 
-export function isBiometricEnrolled(): boolean {
-  return !!localStorage.getItem(CRED_ID_KEY);
+export function isBiometricEnrolled(userId: string): boolean {
+  return !!localStorage.getItem(credIdKey(userId));
 }
 
 /**
- * Registers a new biometric credential and stores the encrypted master password
+ * Registers a new biometric credential and stores the encrypted master password.
+ * All localStorage entries are namespaced by userId so multiple accounts on the
+ * same browser cannot overwrite each other's enrollment data.
  */
-export async function enrollBiometrics(masterPassword: string): Promise<void> {
+export async function enrollBiometrics(masterPassword: string, userId: string): Promise<void> {
   const user = {
     id: crypto.getRandomValues(new Uint8Array(16)),
     name: 'Vault User',
@@ -83,7 +88,7 @@ export async function enrollBiometrics(masterPassword: string): Promise<void> {
 
   const extensionResults = credential.getClientExtensionResults() as AuthenticationExtensionsClientOutputs & WebAuthnPRFExtension;
   const prfResult = extensionResults.prf?.results?.first;
-  
+
   if (!prfResult) {
     throw new Error('Biometric hardware does not support key derivation (PRF)');
   }
@@ -94,26 +99,26 @@ export async function enrollBiometrics(masterPassword: string): Promise<void> {
   // Encrypt the master password
   const iv = crypto.getRandomValues(new Uint8Array(12));
   const encodedPw = new TextEncoder().encode(masterPassword);
-  
+
   const ciphertext = await crypto.subtle.encrypt(
     { name: 'AES-GCM', iv },
     encryptionKey,
     encodedPw
   );
 
-  // Store locally
-  localStorage.setItem(CRED_ID_KEY, btoa(String.fromCharCode(...new Uint8Array(credential.rawId))));
-  localStorage.setItem(PAYLOAD_KEY, btoa(String.fromCharCode(...new Uint8Array(ciphertext))));
-  localStorage.setItem(IV_KEY, btoa(String.fromCharCode(...new Uint8Array(iv))));
+  // Store under user-scoped keys so accounts don't overwrite each other
+  localStorage.setItem(credIdKey(userId),  btoa(String.fromCharCode(...new Uint8Array(credential.rawId))));
+  localStorage.setItem(payloadKey(userId), btoa(String.fromCharCode(...new Uint8Array(ciphertext))));
+  localStorage.setItem(ivKey(userId),      btoa(String.fromCharCode(...new Uint8Array(iv))));
 }
 
 /**
- * Unlocks the stored password using a biometric scan
+ * Unlocks the stored password using a biometric scan.
  */
-export async function unlockWithBiometrics(): Promise<string> {
-  const credIdB64 = localStorage.getItem(CRED_ID_KEY);
-  const payloadB64 = localStorage.getItem(PAYLOAD_KEY);
-  const ivB64 = localStorage.getItem(IV_KEY);
+export async function unlockWithBiometrics(userId: string): Promise<string> {
+  const credIdB64 = localStorage.getItem(credIdKey(userId));
+  const payloadB64 = localStorage.getItem(payloadKey(userId));
+  const ivB64 = localStorage.getItem(ivKey(userId));
 
   if (!credIdB64 || !payloadB64 || !ivB64) {
     throw new Error('Biometrics not enrolled');
@@ -158,10 +163,10 @@ export async function unlockWithBiometrics(): Promise<string> {
   return new TextDecoder().decode(decrypted);
 }
 
-export function clearBiometricEnrollment() {
-  localStorage.removeItem(CRED_ID_KEY);
-  localStorage.removeItem(PAYLOAD_KEY);
-  localStorage.removeItem(IV_KEY);
+export function clearBiometricEnrollment(userId: string) {
+  localStorage.removeItem(credIdKey(userId));
+  localStorage.removeItem(payloadKey(userId));
+  localStorage.removeItem(ivKey(userId));
 }
 
 async function deriveKeyFromPrf(prfOutput: ArrayBuffer): Promise<CryptoKey> {

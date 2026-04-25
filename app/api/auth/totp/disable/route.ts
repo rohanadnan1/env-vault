@@ -2,16 +2,19 @@ import { NextResponse } from 'next/server';
 import { auth } from '@/lib/auth';
 import { db } from '@/lib/db';
 
-export async function POST(req: Request) {
+export async function POST() {
   const session = await auth();
   if (!session?.user?.id) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
 
   try {
-    // 1. Disable 2FA by clearing the secret
+    // Disable login 2FA and clear vault-unlock artifacts that depend on it.
     await db.user.update({
       where: { id: session.user.id },
       data: {
-        totpSecret: null
+        totpSecret: null,
+        twoFAUnlockToken: null,
+        twoFAEncryptedMaster: null,
+        twoFAMasterIv: null,
       }
     });
 

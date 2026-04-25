@@ -6,11 +6,11 @@ import { FolderTree, type DragPayload } from '@/components/vault/FolderTree';
 import { type FolderNode } from '@/lib/db';
 import { CreateFolderModal } from '@/components/vault/CreateFolderModal';
 import { RenameFolderModal } from '@/components/vault/RenameFolderModal';
-import { 
-  Dialog, 
-  DialogContent, 
-  DialogHeader, 
-  DialogTitle, 
+import {
+  Dialog,
+  DialogContent,
+  DialogHeader,
+  DialogTitle,
   DialogDescription,
   DialogFooter
 } from '@/components/ui/dialog';
@@ -19,6 +19,9 @@ import { AlertTriangle, Database, Loader2 } from 'lucide-react';
 import { toast } from 'sonner';
 import { cn } from '@/lib/utils';
 import { ENV_FOLDER_NAME, isSystemFolderName } from '@/lib/system-folder';
+import { useVaultStore } from '@/lib/store/vaultStore';
+import { decryptSecret } from '@/lib/crypto/decrypt';
+import { encryptSecret } from '@/lib/crypto/encrypt';
 
 export function ClientFolderSelector({ 
   folderTree, 
@@ -33,6 +36,7 @@ export function ClientFolderSelector({
 }) {
   const router = useRouter();
   const [isPending, startTransition] = useTransition();
+  const derivedKey = useVaultStore((s) => s.derivedKey);
 
   const [optimisticTree, setOptimisticTree] = useState(folderTree);
 
@@ -192,10 +196,42 @@ export function ClientFolderSelector({
           return;
         }
       } else if (payload.type === 'file') {
+        // Re-encrypt the file content with the canonical `${name}:${environmentId}` AAD
+        // so that moves never cause AAD drift (which makes files permanently unreadable
+        // in the rekey flow and in the vault after future master-key changes).
+        let reEncrypted: { contentEncrypted: string; iv: string } | undefined;
+        if (derivedKey) {
+          try {
+            const fileRes = await fetch(`/api/vault-files/${payload.id}`);
+            if (fileRes.ok) {
+              const file = await fileRes.json() as { name: string; contentEncrypted: string; iv: string };
+              // Try decrypting in priority order: env-scoped (new files), old-folder-scoped
+              // (using sourceId = the folder the file is being dragged FROM), then no AAD.
+              let plaintext: string | null = null;
+              for (const aad of [
+                `${file.name}:${envId}`,
+                payload.sourceId ? `${file.name}:${payload.sourceId}` : null,
+                undefined,
+              ]) {
+                if (aad === null) continue;
+                try {
+                  plaintext = await decryptSecret(file.contentEncrypted, file.iv, derivedKey, aad);
+                  break;
+                } catch { /* try next */ }
+              }
+              if (plaintext !== null) {
+                // Always re-encrypt with environmentId-scoped AAD going forward
+                const enc = await encryptSecret(plaintext, derivedKey, `${file.name}:${envId}`);
+                reEncrypted = { contentEncrypted: enc.valueEncrypted, iv: enc.iv };
+              }
+            }
+          } catch { /* vault locked or fetch failed — proceed without re-encryption */ }
+        }
+
         const res = await fetch(`/api/vault-files/${payload.id}/move`, {
           method: 'PATCH',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ folderId: targetFolderId }),
+          body: JSON.stringify({ folderId: targetFolderId, ...reEncrypted }),
         });
         if (!res.ok) {
           const err = await res.json();

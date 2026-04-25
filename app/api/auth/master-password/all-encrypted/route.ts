@@ -19,6 +19,11 @@ export async function GET() {
     });
     const envIds = environments.map((e) => e.id);
 
+    const folders = await db.folder.findMany({
+      where: { environmentId: { in: envIds } },
+      select: { id: true },
+    });
+
     const [secrets, secretHistories, files, fileHistories, fileComments] = await Promise.all([
       db.secret.findMany({
         where: { environmentId: { in: envIds } },
@@ -67,6 +72,9 @@ export async function GET() {
         folderId: h.file.folderId,
       })),
       fileComments,
+      // All folder IDs across all environments — used by the client to brute-force
+      // the original AAD when a file was encrypted with a now-stale folderId.
+      folderIds: folders.map((f) => f.id),
     });
   } catch {
     return NextResponse.json({ error: 'Internal Server Error' }, { status: 500 });

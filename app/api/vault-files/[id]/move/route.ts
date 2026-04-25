@@ -7,6 +7,10 @@ import { z } from 'zod';
 const MoveSchema = z.object({
   // null means move to environment root (no folder)
   folderId: z.string().nullable(),
+  // When the client can decrypt the file, it re-encrypts with the canonical
+  // environmentId-scoped AAD so future moves and rekeys always work.
+  contentEncrypted: z.string().optional(),
+  iv: z.string().optional(),
 });
 
 export async function PATCH(req: Request, { params }: { params: Promise<{ id: string }> }) {
@@ -29,7 +33,7 @@ export async function PATCH(req: Request, { params }: { params: Promise<{ id: st
 
   try {
     const body = await req.json();
-    const { folderId } = MoveSchema.parse(body);
+    const { folderId, contentEncrypted, iv } = MoveSchema.parse(body);
 
     // Verify target folder belongs to same environment (if provided)
     if (folderId) {
@@ -67,7 +71,10 @@ export async function PATCH(req: Request, { params }: { params: Promise<{ id: st
 
     const updated = await db.vaultFile.update({
       where: { id },
-      data: { folderId },
+      data: {
+        folderId,
+        ...(contentEncrypted && iv ? { contentEncrypted, iv } : {}),
+      },
     });
 
     return NextResponse.json(updated);

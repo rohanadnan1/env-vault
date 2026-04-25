@@ -29,6 +29,7 @@ import {
 } from "@/components/ui/dialog";
 import { toast } from "sonner";
 import { cn } from "@/lib/utils";
+import { updateVaultUnlockAlternativeCache } from "@/lib/vault-unlock-options-cache";
 import {
   generateRecoveryCode,
   encryptMasterWithCode,
@@ -44,7 +45,11 @@ interface CodesStatus {
   remaining: number;
 }
 
-export function RecoveryCodesSection() {
+interface RecoveryCodesSectionProps {
+  onStatusChange?: (hasRecoveryCodes: boolean) => void;
+}
+
+export function RecoveryCodesSection({ onStatusChange }: RecoveryCodesSectionProps) {
   const [status, setStatus] = useState<CodesStatus | null>(null);
   const [isLoading, setIsLoading] = useState(true);
   const [showDialog, setShowDialog] = useState(false);
@@ -58,13 +63,19 @@ export function RecoveryCodesSection() {
   const fetchStatus = useCallback(async () => {
     try {
       const res = await fetch("/api/recovery-codes/status");
-      if (res.ok) setStatus(await res.json());
+      if (res.ok) {
+        const nextStatus: CodesStatus = await res.json();
+        setStatus(nextStatus);
+        const hasRecoveryCodes = (nextStatus.remaining ?? 0) > 0;
+        updateVaultUnlockAlternativeCache({ hasRecoveryCodes });
+        onStatusChange?.(hasRecoveryCodes);
+      }
     } catch {
       // silent
     } finally {
       setIsLoading(false);
     }
-  }, []);
+  }, [onStatusChange]);
 
   useEffect(() => {
     fetchStatus();
