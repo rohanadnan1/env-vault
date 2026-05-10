@@ -18,6 +18,20 @@ async function checkBundleOwnership(bundleId: string, userId: string) {
   return bundle;
 }
 
+export async function GET(
+  _: Request,
+  { params }: { params: Promise<{ bundleId: string }> }
+) {
+  const session = await auth();
+  if (!session?.user?.id) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+  const { bundleId } = await params;
+
+  const bundle = await checkBundleOwnership(bundleId, session.user.id);
+  if (!bundle) return NextResponse.json({ error: 'Not found or unauthorized' }, { status: 404 });
+
+  return NextResponse.json(bundle);
+}
+
 export async function PATCH(
   req: Request,
   { params }: { params: Promise<{ bundleId: string }> }

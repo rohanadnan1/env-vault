@@ -1,11 +1,9 @@
 import { auth } from '@/lib/auth';
-import { redirect } from 'next/navigation';
+import LandingPage from '@/components/landing-page';
 
 export default async function Home() {
   const session = await auth();
-  if (session?.user?.id) {
-    redirect('/dashboard');
-  } else {
-    redirect('/login');
-  }
+  const isLoggedIn = !!session?.user?.id;
+  
+  return <LandingPage isLoggedIn={isLoggedIn} />;
 }

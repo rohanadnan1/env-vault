@@ -23,6 +23,7 @@ import {
   DialogTitle,
 } from "@/components/ui/dialog";
 import { toast } from "sonner";
+import { useSession } from "next-auth/react";
 import { cn } from "@/lib/utils";
 import { generateUnlockToken, encryptMasterWith2FA } from "@/lib/crypto/recovery";
 import { updateVaultUnlockAlternativeCache } from "@/lib/vault-unlock-options-cache";
@@ -41,6 +42,8 @@ export function TwoFAVaultSetup({ is2FAEnabled }: Props) {
   const [showPassword, setShowPassword] = useState(false);
   const [totpCode, setTotpCode] = useState("");
   const [isSaving, setIsSaving] = useState(false);
+  const { data: session } = useSession();
+  const userId = session?.user?.id ?? "";
 
   const fetchStatus = useCallback(async () => {
     try {
@@ -48,14 +51,14 @@ export function TwoFAVaultSetup({ is2FAEnabled }: Props) {
       if (res.ok) {
         const data = await res.json();
         setIsEnabled(data.enabled);
-        updateVaultUnlockAlternativeCache({ has2FAVaultUnlock: !!data?.enabled });
+        updateVaultUnlockAlternativeCache(userId, { has2FAVaultUnlock: !!data?.enabled });
       }
     } catch {
       // silent
     } finally {
       setIsLoading(false);
     }
-  }, []);
+  }, [userId]);
 
   useEffect(() => {
     fetchStatus();
@@ -87,7 +90,7 @@ export function TwoFAVaultSetup({ is2FAEnabled }: Props) {
       }
 
       setIsEnabled(true);
-      updateVaultUnlockAlternativeCache({ has2FAVaultUnlock: true });
+      updateVaultUnlockAlternativeCache(userId, { has2FAVaultUnlock: true });
       setShowSetupDialog(false);
       resetSetupForm();
       toast.success("2FA vault unlock enabled successfully");
@@ -106,7 +109,7 @@ export function TwoFAVaultSetup({ is2FAEnabled }: Props) {
       const res = await fetch("/api/auth/totp/vault-setup", { method: "DELETE" });
       if (res.ok) {
         setIsEnabled(false);
-        updateVaultUnlockAlternativeCache({ has2FAVaultUnlock: false });
+        updateVaultUnlockAlternativeCache(userId, { has2FAVaultUnlock: false });
         toast.success("2FA vault unlock disabled");
       } else {
         toast.error("Failed to disable 2FA vault unlock");

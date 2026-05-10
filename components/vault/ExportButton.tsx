@@ -96,14 +96,18 @@ async function decryptFiles(
   for (const file of files) {
     try {
       try {
-        const aad = `${file.name}:${environmentId}`;
+        const aad = `${file.name}:${fallbackFolderId || environmentId}`;
         const content = await decryptSecret(file.contentEncrypted, file.iv, derivedKey, aad);
         result.push({ name: file.name, content });
       } catch {
-        if (!fallbackFolderId) throw new Error();
-        const fallbackAad = `${file.name}:${fallbackFolderId}`;
-        const content = await decryptSecret(file.contentEncrypted, file.iv, derivedKey, fallbackAad);
-        result.push({ name: file.name, content });
+        try {
+          const aad2 = `${file.name}:${environmentId}`;
+          const content = await decryptSecret(file.contentEncrypted, file.iv, derivedKey, aad2);
+          result.push({ name: file.name, content });
+        } catch {
+          const content = await decryptSecret(file.contentEncrypted, file.iv, derivedKey);
+          result.push({ name: file.name, content });
+        }
       }
     } catch {
       result.push({ name: `ERROR_${file.name}`, content: 'Decryption failed' });

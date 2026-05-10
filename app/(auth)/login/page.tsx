@@ -9,6 +9,7 @@ import { Label } from '@/components/ui/label';
 import { toast } from 'sonner';
 import Link from 'next/link';
 import { DeviceChallengeModal } from '@/components/auth/DeviceChallengeModal';
+import { EmailVerificationModal } from '@/components/auth/EmailVerificationModal';
 
 // Stable device ID persisted in a cookie for 30 days
 function getOrCreateDeviceId(): string {
@@ -28,6 +29,12 @@ interface ChallengeState {
   ip: string | null;
 }
 
+interface PendingEmailVerification {
+  userId: string;
+  email: string;
+  name?: string | null;
+}
+
 export default function LoginPage() {
   const router = useRouter();
   const [email, setEmail] = useState('');
@@ -35,6 +42,7 @@ export default function LoginPage() {
   const [isLoading, setIsLoading] = useState(false);
   const [deviceId, setDeviceId] = useState('');
   const [challenge, setChallenge] = useState<ChallengeState | null>(null);
+  const [pendingVerification, setPendingVerification] = useState<PendingEmailVerification | null>(null);
 
   useEffect(() => {
     setDeviceId(getOrCreateDeviceId());
@@ -67,6 +75,16 @@ export default function LoginPage() {
 
       if (!res.ok) {
         toast.error(data.error ?? 'Invalid email or password');
+        return;
+      }
+
+      if (data.status === 'email_verification_required') {
+        setPendingVerification({
+          userId: data.userId,
+          email: data.email || email,
+          name: data.name,
+        });
+        toast.info('Verify your email to continue');
         return;
       }
 
@@ -132,6 +150,11 @@ export default function LoginPage() {
               disabled={isLoading}
             />
           </div>
+          <div className="flex justify-end">
+            <Link href="/forgot-password" className="text-sm font-medium text-indigo-600 hover:underline">
+              Forgot password?
+            </Link>
+          </div>
           <Button className="w-full" type="submit" disabled={isLoading || !deviceId}>
             {isLoading ? 'Signing in…' : 'Sign in'}
           </Button>
@@ -156,6 +179,20 @@ export default function LoginPage() {
           ip={challenge.ip}
           onVerified={onChallengeVerified}
           onCancel={() => { setChallenge(null); setIsLoading(false); }}
+        />
+      )}
+
+      {pendingVerification && (
+        <EmailVerificationModal
+          open
+          userId={pendingVerification.userId}
+          email={pendingVerification.email}
+          name={pendingVerification.name}
+          onVerified={async () => {
+            setPendingVerification(null);
+            await doSignIn();
+          }}
+          onCancel={() => { setPendingVerification(null); setIsLoading(false); }}
         />
       )}
     </>

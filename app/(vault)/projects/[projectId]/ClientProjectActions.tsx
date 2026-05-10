@@ -2,9 +2,10 @@
 
 import { useState } from 'react';
 import { Button } from '@/components/ui/button';
-import { Plus, Settings } from 'lucide-react';
+import { Plus, Settings, Share2 } from 'lucide-react';
 import { CreateEnvironmentModal } from '@/components/vault/CreateEnvironmentModal';
 import { ProjectSettingsModal } from '@/components/vault/ProjectSettingsModal';
+import { ShareResourceModal } from '@/components/sharing/ShareResourceModal';
 
 interface ClientProjectActionsProps {
   projectId: string;
@@ -20,10 +21,19 @@ interface ClientProjectActionsProps {
 export function ClientProjectActions({ projectId, initialData }: ClientProjectActionsProps) {
   const [isEnvModalOpen, setIsEnvModalOpen] = useState(false);
   const [isSettingsOpen, setIsSettingsOpen] = useState(false);
+  const [isShareOpen, setIsShareOpen] = useState(false);
 
   return (
     <>
       <div className="flex gap-3">
+        <Button
+          variant="outline"
+          size="sm"
+          className="shadow-sm border-slate-200"
+          onClick={() => setIsShareOpen(true)}
+        >
+          <Share2 className="w-4 h-4 mr-2 text-slate-500" /> Share
+        </Button>
         <Button 
           variant="outline" 
           size="sm" 
@@ -51,6 +61,15 @@ export function ClientProjectActions({ projectId, initialData }: ClientProjectAc
         open={isSettingsOpen}
         onOpenChange={setIsSettingsOpen}
         initialData={initialData}
+      />
+
+      <ShareResourceModal
+        open={isShareOpen}
+        onOpenChange={setIsShareOpen}
+        resourceType="PROJECT"
+        resourceId={projectId}
+        resourceName={initialData.name}
+        projectId={projectId}
       />
     </>
   );

@@ -2,7 +2,7 @@
 
 import { useState, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
-import { Eye, EyeOff, Copy, Trash2, History, Check, AlertTriangle, GripVertical, Pencil } from 'lucide-react';
+import { Eye, EyeOff, Copy, Trash2, History, Check, AlertTriangle, GripVertical, Pencil, Share2 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { 
@@ -19,6 +19,7 @@ import { useVaultStore } from '@/lib/store/vaultStore';
 import { toast } from 'sonner';
 import { SecretHistoryModal } from './SecretHistoryModal';
 import { SecretEditor } from './SecretEditor';
+import { ShareResourceModal } from '@/components/sharing/ShareResourceModal';
 import { cn } from '@/lib/utils';
 
 interface SecretRowProps {
@@ -62,6 +63,7 @@ export function SecretRow({
   const [isEditorOpen, setIsEditorOpen] = useState(false);
   const [isPreparingEdit, setIsPreparingEdit] = useState(false);
   const [editPlaintext, setEditPlaintext] = useState('');
+  const [collabShareOpen, setCollabShareOpen] = useState(false);
   
   const derivedKey = useVaultStore((s) => s.derivedKey);
   const touchActivity = useVaultStore((s) => s.touchActivity);
@@ -301,6 +303,16 @@ export function SecretRow({
           <History className="w-4 h-4" />
         </Button>
 
+        <Button
+          variant="ghost"
+          size="icon"
+          className="h-8 w-8 text-slate-400 hover:text-indigo-600 hover:bg-slate-100"
+          onClick={() => setCollabShareOpen(true)}
+          title="Collaborative share"
+        >
+          <Share2 className="w-4 h-4" />
+        </Button>
+
         <Dialog open={isDeleteOpen} onOpenChange={setIsDeleteOpen}>
           <DialogTrigger 
             render={
@@ -371,6 +383,15 @@ export function SecretRow({
         onSuccess={() => {
           router.refresh();
         }}
+      />
+
+      <ShareResourceModal
+        open={collabShareOpen}
+        onOpenChange={setCollabShareOpen}
+        resourceType="SECRET"
+        resourceId={id}
+        resourceName={keyName}
+        envId={environmentId}
       />
     </div>
   );

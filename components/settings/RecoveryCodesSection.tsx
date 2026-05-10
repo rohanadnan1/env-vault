@@ -28,6 +28,7 @@ import {
   DialogTitle,
 } from "@/components/ui/dialog";
 import { toast } from "sonner";
+import { useSession } from "next-auth/react";
 import { cn } from "@/lib/utils";
 import { updateVaultUnlockAlternativeCache } from "@/lib/vault-unlock-options-cache";
 import {
@@ -59,6 +60,8 @@ export function RecoveryCodesSection({ onStatusChange }: RecoveryCodesSectionPro
   const [generatedCodes, setGeneratedCodes] = useState<string[]>([]);
   const [copiedIndex, setCopiedIndex] = useState<number | null>(null);
   const [showCodesDialog, setShowCodesDialog] = useState(false);
+  const { data: session } = useSession();
+  const userId = session?.user?.id ?? "";
 
   const fetchStatus = useCallback(async () => {
     try {
@@ -67,7 +70,7 @@ export function RecoveryCodesSection({ onStatusChange }: RecoveryCodesSectionPro
         const nextStatus: CodesStatus = await res.json();
         setStatus(nextStatus);
         const hasRecoveryCodes = (nextStatus.remaining ?? 0) > 0;
-        updateVaultUnlockAlternativeCache({ hasRecoveryCodes });
+        updateVaultUnlockAlternativeCache(userId, { hasRecoveryCodes });
         onStatusChange?.(hasRecoveryCodes);
       }
     } catch {
@@ -75,7 +78,7 @@ export function RecoveryCodesSection({ onStatusChange }: RecoveryCodesSectionPro
     } finally {
       setIsLoading(false);
     }
-  }, [onStatusChange]);
+  }, [onStatusChange, userId]);
 
   useEffect(() => {
     fetchStatus();

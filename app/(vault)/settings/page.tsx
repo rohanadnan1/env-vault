@@ -18,7 +18,7 @@ import { cn } from "@/lib/utils";
 import { ProfileTab } from "@/components/settings/ProfileTab";
 import { SecurityTab } from "@/components/settings/SecurityTab";
 import { DangerZone } from "@/components/settings/DangerZone";
-// Note: Shares tab will show existing share management
+import { ActiveSharesTab } from "@/components/settings/ActiveSharesTab";
 
 export default function SettingsPage() {
   const searchParams = useSearchParams();
@@ -108,23 +108,7 @@ export default function SettingsPage() {
         <main className="flex-1 min-w-0">
           {activeTab === "profile" && <ProfileTab />}
           {activeTab === "security" && <SecurityTab />}
-          {activeTab === "shares" && (
-            <Card className="border-slate-200 shadow-sm rounded-2xl">
-              <CardHeader>
-                <CardTitle>Manage Shares</CardTitle>
-                <CardDescription>
-                  Review and revoke active share links you've created.
-                </CardDescription>
-              </CardHeader>
-              <CardContent className="py-10 flex flex-col items-center justify-center text-center">
-                <div className="w-16 h-16 bg-slate-50 rounded-full flex items-center justify-center mb-4">
-                  <Share2 className="w-8 h-8 text-slate-300" />
-                </div>
-                <h3 className="text-slate-900 font-semibold mb-1">No active shares found</h3>
-                <p className="text-sm text-slate-500">You haven't shared any secrets from this vault yet.</p>
-              </CardContent>
-            </Card>
-          )}
+          {activeTab === "shares" && <ActiveSharesTab />}
           {activeTab === "danger" && <DangerZone />}
         </main>
       </div>

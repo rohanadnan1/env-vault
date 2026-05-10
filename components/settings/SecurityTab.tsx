@@ -10,6 +10,7 @@ import {
   AlertTriangle,
   Loader2,
   MonitorX,
+  Fingerprint,
 } from "lucide-react";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle, CardFooter } from "@/components/ui/card";
 import { Label } from "@/components/ui/label";
@@ -41,6 +42,15 @@ import {
   syncVaultUnlockAlternativeCacheFromServer,
   updateVaultUnlockAlternativeCache,
 } from "@/lib/vault-unlock-options-cache";
+import {
+  isBiometricSupported,
+  isBiometricEnrolled,
+  enrollBiometrics,
+  clearBiometricEnrollment,
+} from "@/lib/crypto/biometric";
+import { useVaultStore } from "@/lib/store/vaultStore";
+import { useSession } from "next-auth/react";
+import { Input } from "@/components/ui/input";
 
 export function SecurityTab() {
   const [autoLock, setAutoLock] = useState("15");
@@ -52,6 +62,12 @@ export function SecurityTab() {
   const [showSignOutAll, setShowSignOutAll] = useState(false);
   const [hasRecoveryCodes, setHasRecoveryCodes] = useState(false);
   const [showChangeMasterPw, setShowChangeMasterPw] = useState(false);
+  const [bioSupported, setBioSupported] = useState(false);
+  const [bioEnrolled, setBioEnrolled] = useState(false);
+  const [isEnrollingBio, setIsEnrollingBio] = useState(false);
+  const [isClearingBio, setIsClearingBio] = useState(false);
+  const [masterPassword, setMasterPassword] = useState('');
+  const [showBioEnroll, setShowBioEnroll] = useState(false);
   const [masterPwStatus, setMasterPwStatus] = useState<{
     hasResetPath: boolean; hasRecoveryCodes: boolean; hasTotp: boolean;
     onCooldown: boolean; nextChangeAt: string | null;
@@ -75,6 +91,54 @@ export function SecurityTab() {
       return nextHasRecoveryCodes;
     });
   }, [refreshMasterPasswordStatus]);
+
+  const { data: session } = useSession();
+  const userId = session?.user?.id ?? '';
+  const derivedKey = useVaultStore((s) => s.derivedKey);
+  const setBiometricEnrolled = useVaultStore((s) => s.setBiometricEnrolled);
+
+  const refreshBiometricStatus = useCallback(async () => {
+    if (!userId) return;
+    const supported = await isBiometricSupported();
+    setBioSupported(supported);
+    if (supported) {
+      setBioEnrolled(isBiometricEnrolled(userId));
+    }
+  }, [userId]);
+
+  const handleEnrollBio = async () => {
+    if (!masterPassword || !derivedKey) {
+      toast.error('Vault must be unlocked to enable biometrics');
+      return;
+    }
+    setIsEnrollingBio(true);
+    try {
+      await enrollBiometrics(masterPassword, userId);
+      setBioEnrolled(true);
+      setBiometricEnrolled(true);
+      setShowBioEnroll(false);
+      setMasterPassword('');
+      toast.success('Touch ID enabled — you can now unlock with your fingerprint');
+    } catch {
+      toast.error('Could not enable Touch ID — you may have cancelled the prompt');
+    } finally {
+      setIsEnrollingBio(false);
+    }
+  };
+
+  const handleClearBio = async () => {
+    setIsClearingBio(true);
+    try {
+      clearBiometricEnrollment(userId);
+      setBioEnrolled(false);
+      setBiometricEnrolled(false);
+      toast.success('Touch ID removed from this device');
+    } catch {
+      toast.error('Failed to remove Touch ID');
+    } finally {
+      setIsClearingBio(false);
+    }
+  };
 
   // Load status on mount
   useEffect(() => {
@@ -103,7 +167,8 @@ export function SecurityTab() {
         await refreshMasterPasswordStatus();
 
         // Keep vault unlock alternatives cache fresh after settings page loads.
-        void syncVaultUnlockAlternativeCacheFromServer();
+        void syncVaultUnlockAlternativeCacheFromServer(userId);
+        void refreshBiometricStatus();
       } catch (_err) {
         console.error("Failed to load security status");
       } finally {
@@ -111,7 +176,7 @@ export function SecurityTab() {
       }
     };
     fetchStatus();
-  }, [refreshMasterPasswordStatus]);
+  }, [refreshMasterPasswordStatus, refreshBiometricStatus, userId]);
 
   const handleAutoLockChange = (value: string | null) => {
     if (!value) return;
@@ -127,7 +192,7 @@ export function SecurityTab() {
       const res = await fetch("/api/auth/totp/disable", { method: "POST" });
       if (res.ok) {
         setIs2FAEnabled(false);
-        updateVaultUnlockAlternativeCache({ has2FAVaultUnlock: false });
+        updateVaultUnlockAlternativeCache(userId, { has2FAVaultUnlock: false });
         setShowRevoke2FAModal(false);
         await refreshMasterPasswordStatus();
         toast.success("2FA has been disabled.");
@@ -190,6 +255,83 @@ export function SecurityTab() {
               </SelectContent>
             </Select>
           </div>
+        </CardContent>
+      </Card>
+
+      {/* Biometric Unlock */}
+      <Card className="border-slate-200 shadow-sm rounded-2xl overflow-hidden">
+        <CardHeader className="bg-slate-50/50 border-b border-slate-100 flex flex-row items-center justify-between">
+          <div>
+            <CardTitle>Biometric Unlock</CardTitle>
+            <CardDescription>Use Touch ID or Face ID to unlock your vault instantly.</CardDescription>
+          </div>
+          <div className="p-2 bg-white rounded-lg border border-slate-100 shadow-sm">
+            <Fingerprint className="w-5 h-5 text-indigo-600" />
+          </div>
+        </CardHeader>
+        <CardContent className="p-6">
+          {!bioSupported ? (
+            <div className="flex items-start gap-4">
+              <div className="w-10 h-10 rounded-xl flex items-center justify-center border bg-slate-50 border-slate-100">
+                <Fingerprint className="w-5 h-5 text-slate-400" />
+              </div>
+              <div className="space-y-1">
+                <h3 className="font-bold text-slate-900">Not available</h3>
+                <p className="text-sm text-slate-500">
+                  Your device or browser does not support biometric unlock. Try using Safari on macOS or Chrome on a device with a fingerprint sensor.
+                </p>
+              </div>
+            </div>
+          ) : bioEnrolled ? (
+            <div className="flex items-center justify-between">
+              <div className="flex items-start gap-4">
+                <div className="w-10 h-10 rounded-xl flex items-center justify-center border bg-emerald-50 border-emerald-100">
+                  <Fingerprint className="w-5 h-5 text-emerald-600" />
+                </div>
+                <div className="space-y-1">
+                  <h3 className="font-bold text-slate-900">Touch ID enabled</h3>
+                  <p className="text-sm text-slate-500">
+                    Your fingerprint is linked to this device. You can unlock the vault without typing your password.
+                  </p>
+                </div>
+              </div>
+              <Button
+                variant="destructive"
+                className="rounded-xl shrink-0"
+                onClick={handleClearBio}
+                disabled={isClearingBio}
+              >
+                {isClearingBio ? (
+                  <span className="flex items-center gap-2">
+                    <Loader2 className="w-4 h-4 animate-spin" />
+                    Removing...
+                  </span>
+                ) : (
+                  'Remove Touch ID'
+                )}
+              </Button>
+            </div>
+          ) : (
+            <div className="flex items-center justify-between">
+              <div className="flex items-start gap-4">
+                <div className="w-10 h-10 rounded-xl flex items-center justify-center border bg-slate-50 border-slate-100">
+                  <Fingerprint className="w-5 h-5 text-slate-400" />
+                </div>
+                <div className="space-y-1">
+                  <h3 className="font-bold text-slate-900">Not set up</h3>
+                  <p className="text-sm text-slate-500">
+                    Enable Touch ID to unlock your vault with your fingerprint instead of typing your master password each time.
+                  </p>
+                </div>
+              </div>
+              <Button
+                className="bg-indigo-600 hover:bg-indigo-700 text-white rounded-xl shadow-md px-8"
+                onClick={() => setShowBioEnroll(true)}
+              >
+                Set up Touch ID
+              </Button>
+            </div>
+          )}
         </CardContent>
       </Card>
 
@@ -339,7 +481,7 @@ export function SecurityTab() {
         onOpenChange={setIsSettingUp2FA}
         onSuccess={() => {
           setIs2FAEnabled(true);
-          void syncVaultUnlockAlternativeCacheFromServer();
+          void syncVaultUnlockAlternativeCacheFromServer(userId);
           void refreshMasterPasswordStatus();
         }}
       />
@@ -395,6 +537,70 @@ export function SecurityTab() {
                 </span>
               ) : (
                 "Disable 2FA"
+              )}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* Biometric Enrollment Dialog */}
+      <Dialog open={showBioEnroll} onOpenChange={() => !isEnrollingBio && setShowBioEnroll(false)}>
+        <DialogContent className="rounded-2xl max-w-md">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2">
+              <Fingerprint className="w-5 h-5 text-indigo-600" />
+              Set up Touch ID
+            </DialogTitle>
+            <DialogDescription>
+              Enter your master password to enable fingerprint unlock on this device.
+            </DialogDescription>
+          </DialogHeader>
+
+          <div className="space-y-4 py-4">
+            <div className="space-y-2">
+              <Label htmlFor="bio-master-password">Master Password</Label>
+              <Input
+                id="bio-master-password"
+                type="password"
+                placeholder="Enter your master password"
+                value={masterPassword}
+                onChange={(e) => setMasterPassword(e.target.value)}
+                disabled={isEnrollingBio}
+                className="h-12 rounded-xl"
+                autoFocus
+              />
+            </div>
+
+            <div className="p-3 bg-indigo-50 border border-indigo-100 rounded-xl text-sm text-indigo-800 flex gap-3">
+              <ShieldCheck className="w-5 h-5 text-indigo-600 shrink-0 mt-0.5" />
+              <p>
+                Your password is encrypted and stored securely on this device using your fingerprint.
+                It never leaves your browser.
+              </p>
+            </div>
+          </div>
+
+          <DialogFooter className="gap-2">
+            <Button
+              variant="outline"
+              className="rounded-xl"
+              onClick={() => { setShowBioEnroll(false); setMasterPassword(''); }}
+              disabled={isEnrollingBio}
+            >
+              Cancel
+            </Button>
+            <Button
+              className="bg-indigo-600 hover:bg-indigo-700 text-white rounded-xl shadow-md"
+              onClick={handleEnrollBio}
+              disabled={isEnrollingBio || !masterPassword}
+            >
+              {isEnrollingBio ? (
+                <span className="flex items-center gap-2">
+                  <Loader2 className="w-4 h-4 animate-spin" />
+                  Setting up...
+                </span>
+              ) : (
+                'Enable Touch ID'
               )}
             </Button>
           </DialogFooter>

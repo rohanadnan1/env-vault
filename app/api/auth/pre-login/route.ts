@@ -2,6 +2,7 @@ import { NextResponse } from 'next/server';
 import { db } from '@/lib/db';
 import bcrypt from 'bcryptjs';
 import { z } from 'zod';
+import { issueEmailVerificationCode } from '@/lib/auth/email-verification';
 
 const Schema = z.object({
   email: z.string().email(),
@@ -43,7 +44,7 @@ export async function POST(req: Request) {
 
     const user = await db.user.findUnique({
       where: { email },
-      select: { id: true, password: true, totpSecret: true },
+      select: { id: true, password: true, totpSecret: true, emailVerified: true, name: true, email: true },
     });
 
     // Always do bcrypt work to prevent timing-based user enumeration
@@ -54,6 +55,16 @@ export async function POST(req: Request) {
 
     if (!user || !passwordMatch) {
       return NextResponse.json({ error: 'Invalid email or password' }, { status: 401 });
+    }
+
+    if (!user.emailVerified) {
+      await issueEmailVerificationCode(user.id, user.email, user.name);
+      return NextResponse.json({
+        status: 'email_verification_required',
+        userId: user.id,
+        email: user.email,
+        name: user.name,
+      });
     }
 
     // Check if user has any second factor set up

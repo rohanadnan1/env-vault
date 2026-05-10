@@ -24,6 +24,17 @@ async function checkSecretOwnership(id: string, userId: string) {
   return secret;
 }
 
+export async function GET(_: Request, { params }: { params: Promise<{ id: string }> }) {
+  const session = await auth();
+  if (!session?.user?.id) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+  const { id } = await params;
+
+  const secret = await checkSecretOwnership(id, session.user.id);
+  if (!secret) return NextResponse.json({ error: 'Not found or unauthorized' }, { status: 404 });
+
+  return NextResponse.json(secret);
+}
+
 export async function PATCH(req: Request, { params }: { params: Promise<{ id: string }> }) {
   const session = await auth();
   if (!session?.user?.id) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });

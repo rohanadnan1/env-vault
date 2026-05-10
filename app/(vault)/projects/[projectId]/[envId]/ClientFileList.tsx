@@ -6,7 +6,7 @@ import {
   FileText, MoreHorizontal, Trash2, Edit3, Download, GripVertical,
   FileCode2, FileJson, FileImage, ShieldAlert, BookText, Code2, Database,
   AlertTriangle, Loader2, Pin, PinOff, MessageSquare, Package, ChevronDown,
-  ChevronRight, Plus, Wand2, PackageOpen, X, Pencil,
+  ChevronRight, Plus, Wand2, PackageOpen, X, Pencil, Share2,
 } from 'lucide-react';
 import {
   DropdownMenu, DropdownMenuContent, DropdownMenuItem,
@@ -19,6 +19,7 @@ import {
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { FileEditor } from '@/components/vault/FileEditor';
+import { ShareResourceModal } from '@/components/sharing/ShareResourceModal';
 import { decryptSecret } from '@/lib/crypto/decrypt';
 import { useVaultStore } from '@/lib/store/vaultStore';
 import { toast } from 'sonner';
@@ -216,6 +217,9 @@ export function ClientFileList({
   // ── Bundle delete confirm ─────────────────────────────────────────────────
   const [deletingBundle, setDeletingBundle] = useState<FileBundle | null>(null);
 
+  // ── Bundle share ──────────────────────────────────────────────────────────
+  const [shareBundle, setShareBundle] = useState<FileBundle | null>(null);
+
   // ─────────────────────────────────────────────────────────────────────────
   // Pin / Unpin
   // ─────────────────────────────────────────────────────────────────────────
@@ -286,10 +290,13 @@ export function ClientFileList({
     try {
       let decrypted: string;
       try {
-        decrypted = await decryptSecret(file.contentEncrypted, file.iv, derivedKey, `${file.name}:${environmentId}`);
+        decrypted = await decryptSecret(file.contentEncrypted, file.iv, derivedKey, `${file.name}:${folderId || environmentId}`);
       } catch {
-        if (!folderId) throw new Error();
-        decrypted = await decryptSecret(file.contentEncrypted, file.iv, derivedKey, `${file.name}:${folderId}`);
+        try {
+          decrypted = await decryptSecret(file.contentEncrypted, file.iv, derivedKey, `${file.name}:${environmentId}`);
+        } catch {
+          decrypted = await decryptSecret(file.contentEncrypted, file.iv, derivedKey);
+        }
       }
       triggerDownload(new Blob([decrypted], { type: file.mimeType || 'text/plain' }), file.name);
       toast.success(`Downloaded ${file.name}`);
@@ -685,6 +692,9 @@ export function ClientFileList({
                 }
               />
               <DropdownMenuContent align="end" className="w-52">
+                <DropdownMenuItem onClick={(e) => { e.stopPropagation(); setShareBundle(bundle); }}>
+                  <Share2 className="w-3.5 h-3.5 mr-2" /> Share Bundle
+                </DropdownMenuItem>
                 <DropdownMenuItem onClick={(e) => { e.stopPropagation(); setRenamingBundle(bundle); setRenameValue(bundle.name); }}>
                   <Pencil className="w-3.5 h-3.5 mr-2" /> Rename Bundle
                 </DropdownMenuItem>
@@ -1074,6 +1084,17 @@ export function ClientFileList({
           <Loader2 className="w-3 h-3 animate-spin text-slate-400" />
           <span className="text-[10px] font-medium text-slate-400">Syncing...</span>
         </div>
+      )}
+
+      {shareBundle && (
+        <ShareResourceModal
+          open={true}
+          onOpenChange={(open) => { if (!open) setShareBundle(null); }}
+          resourceType="BUNDLE"
+          resourceId={shareBundle.id}
+          resourceName={shareBundle.name}
+          envId={environmentId}
+        />
       )}
     </>
   );

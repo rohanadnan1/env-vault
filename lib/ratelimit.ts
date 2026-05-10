@@ -51,3 +51,55 @@ export const saltLimiter = isConfigured && redis
       prefix: "envault_salt",
     })
   : { limit: () => Promise.resolve({ success: true, reset: Date.now() + 60000 }) };
+
+/**
+ * Sharing Invite Creation Rate Limiter
+ * 5 invites per hour per user
+ */
+export const sharingInviteLimiter = isConfigured && redis
+  ? new Ratelimit({
+      redis,
+      limiter: Ratelimit.slidingWindow(5, "1 h"),
+      analytics: true,
+      prefix: "envault_sharing_invite",
+    })
+  : { limit: () => Promise.resolve({ success: true, reset: Date.now() + 3600000 }) };
+
+/**
+ * Sharing Invite Accept Rate Limiter
+ * 10 accepts per hour per user
+ */
+export const sharingAcceptLimiter = isConfigured && redis
+  ? new Ratelimit({
+      redis,
+      limiter: Ratelimit.slidingWindow(10, "1 h"),
+      analytics: true,
+      prefix: "envault_sharing_accept",
+    })
+  : { limit: () => Promise.resolve({ success: true, reset: Date.now() + 3600000 }) };
+
+/**
+ * Sharing Token Validation Rate Limiter (brute force protection)
+ * 20 requests per hour per IP
+ */
+export const sharingTokenLimiter = isConfigured && redis
+  ? new Ratelimit({
+      redis,
+      limiter: Ratelimit.slidingWindow(20, "1 h"),
+      analytics: true,
+      prefix: "envault_sharing_token",
+    })
+  : { limit: () => Promise.resolve({ success: true, reset: Date.now() + 3600000 }) };
+
+/**
+ * Password reset request limiter
+ * 5 requests per hour per IP/email key
+ */
+export const passwordResetLimiter = isConfigured && redis
+  ? new Ratelimit({
+      redis,
+      limiter: Ratelimit.slidingWindow(5, "1 h"),
+      analytics: true,
+      prefix: "envault_password_reset",
+    })
+  : { limit: () => Promise.resolve({ success: true, reset: Date.now() + 3600000 }) };
