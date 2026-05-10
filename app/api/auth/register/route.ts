@@ -2,6 +2,7 @@ import { NextResponse } from 'next/server';
 import { db } from '@/lib/db';
 import bcrypt from 'bcryptjs';
 import { z } from 'zod';
+import { issueEmailVerificationCode } from '@/lib/auth/email-verification';
 
 const registerSchema = z.object({
   name: z.string().min(1, 'Name is required'),
@@ -18,21 +19,35 @@ export async function POST(req: Request) {
       where: { email }
     });
 
-    if (existingUser) {
+    if (existingUser?.emailVerified) {
       return NextResponse.json({ error: 'Email already registered' }, { status: 400 });
     }
 
     const hashedPassword = await bcrypt.hash(password, 12);
+    const user = existingUser
+      ? await db.user.update({
+          where: { id: existingUser.id },
+          data: {
+            name,
+            email,
+            password: hashedPassword,
+            emailVerified: null,
+          },
+        })
+      : await db.user.create({
+          data: {
+            name,
+            email,
+            password: hashedPassword,
+          },
+        });
 
-    await db.user.create({
-      data: {
-        name,
-        email,
-        password: hashedPassword
-      }
-    });
+    await issueEmailVerificationCode(user.id, user.email, user.name);
 
-    return NextResponse.json({ success: true }, { status: 201 });
+    return NextResponse.json(
+      { success: true, userId: user.id, email: user.email, name: user.name },
+      { status: 201 }
+    );
   } catch (error) {
     if (error instanceof z.ZodError) {
       const zodError = error as z.ZodError;

@@ -16,10 +16,11 @@ import { encryptSecret } from '@/lib/crypto/encrypt';
 import { decryptSecret } from '@/lib/crypto/decrypt';
 import { useVaultStore } from '@/lib/store/vaultStore';
 import { toast } from 'sonner';
-import { FileText, Save, Maximize2, Minimize2, FileCode2, FileJson, FileImage, ShieldAlert, BookText, Code2, Database, X, Copy, History, MessageSquare, Loader2, Trash2, Send, AlertTriangle, Lock, ChevronDown } from 'lucide-react';
+import { FileText, Save, Maximize2, Minimize2, FileCode2, FileJson, FileImage, ShieldAlert, BookText, Code2, Database, X, Copy, History, MessageSquare, Loader2, Trash2, Send, AlertTriangle, Lock, ChevronDown, Share2 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { FileHistoryModal } from '@/components/vault/FileHistoryModal';
 import { Textarea } from '@/components/ui/textarea';
+import { ShareResourceModal } from '@/components/sharing/ShareResourceModal';
 
 import {
   DropdownMenu,
@@ -201,6 +202,7 @@ export function FileEditor({
   const [localCommentCount, setLocalCommentCount] = useState(initialData?.commentCount ?? 0);
   const [allSecret, setAllSecret]               = useState(false); // send all as secret
   const [decryptedMap, setDecryptedMap]         = useState<Map<string, string>>(new Map());
+  const [collabShareOpen, setCollabShareOpen]   = useState(false);
 
   // Notify parent list immediately when comment count changes
   useEffect(() => {
@@ -318,18 +320,22 @@ export function FileEditor({
     setIsDecrypting(true);
     try {
       try {
-        const aad1 = `${fileName}:${environmentId}`;
+        const aad1 = `${fileName}:${folderId || environmentId}`;
         const decrypted = await decryptSecret(encrypted, iv, derivedKey, aad1);
         setContent(decrypted);
       } catch {
-        // Fallback for files saved prior to the `environmentId` export AAD synchronization fix
         try {
-          const aad2 = `${fileName}:${folderId}`;
+          const aad2 = `${fileName}:${environmentId}`;
           const decrypted = await decryptSecret(encrypted, iv, derivedKey, aad2);
           setContent(decrypted);
         } catch {
-          setContent('# DECRYPTION FAILED\n# The master key does not match this file or its state has drifted uniquely. You may safely overwrite this content.');
-          toast.error('Decryption failed for this file context.');
+          try {
+            const decrypted = await decryptSecret(encrypted, iv, derivedKey);
+            setContent(decrypted);
+          } catch {
+            setContent('# DECRYPTION FAILED\n# The master key does not match this file or its state has drifted uniquely. You may safely overwrite this content.');
+            toast.error('Decryption failed for this file context.');
+          }
         }
       }
     } catch (err) {
@@ -381,7 +387,7 @@ export function FileEditor({
     touchActivity();
 
     try {
-      const parentScopeId = environmentId || folderId;
+      const parentScopeId = folderId || environmentId;
       if (!parentScopeId) throw new Error('Missing parent scope');
       const aad = `${nameToSave}:${parentScopeId}`;
       const { valueEncrypted, iv } = await encryptSecret(content, derivedKey, aad);
@@ -523,7 +529,7 @@ export function FileEditor({
             >
               {isFullscreen ? <Minimize2 className="w-4 h-4" /> : <Maximize2 className="w-4 h-4" />}
             </Button>
-            {initialData?.id && (
+             {initialData?.id && (
               <>
                 <Button
                   variant="outline"
@@ -533,6 +539,15 @@ export function FileEditor({
                   title="File revision history"
                 >
                   <History className="w-4 h-4" />
+                </Button>
+                <Button
+                  variant="outline"
+                  size="icon"
+                  className="h-9 w-9 text-slate-500 hover:text-indigo-600 border-slate-200"
+                  onClick={() => setCollabShareOpen(true)}
+                  title="Collaborative share"
+                >
+                  <Share2 className="w-4 h-4" />
                 </Button>
                 <Button
                   variant="outline"
@@ -919,6 +934,16 @@ export function FileEditor({
           </DialogFooter>
         </DialogContent>
       </Dialog>
+
+      {initialData?.id && (
+        <ShareResourceModal
+          open={collabShareOpen}
+          onOpenChange={setCollabShareOpen}
+          resourceType="FILE"
+          resourceId={initialData.id}
+          resourceName={name || initialData.name}
+        />
+      )}
     </Dialog>
   );
 }

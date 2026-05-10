@@ -6,12 +6,15 @@ import {
   Search, 
   ChevronRight,
   Hash,
+  Share2,
 } from 'lucide-react';
+import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { SecretRow } from '@/components/vault/SecretRow';
 import { ClientFileList } from '@/app/(vault)/projects/[projectId]/[envId]/ClientFileList';
 import { ClientSecretActions } from '@/app/(vault)/projects/[projectId]/[envId]/ClientSecretActions';
 import { ExportButton } from '@/components/vault/ExportButton';
+import { ShareResourceModal } from '@/components/sharing/ShareResourceModal';
 
 interface VaultStructureViewProps {
   project: { id: string; name: string };
@@ -40,6 +43,7 @@ export function VaultStructureView({
   const [searchQuery, setSearchQuery] = useState("");
   const [optimisticSecrets, setOptimisticSecrets] = useState(secrets);
   const [optimisticFiles, setOptimisticFiles] = useState(files);
+  const [collabShareOpen, setCollabShareOpen] = useState(false);
 
   // Sync with server props when they change
   useEffect(() => {
@@ -144,6 +148,15 @@ export function VaultStructureView({
               className="pl-9 h-9 w-48 lg:w-64 border-slate-200 bg-slate-50/50 focus:bg-white transition-all focus:ring-2 focus:ring-indigo-500/20"
             />
           </div>
+          <Button
+            variant="ghost"
+            size="icon"
+            className="h-9 w-9 text-slate-400 hover:text-indigo-600 hover:bg-slate-100"
+            onClick={() => setCollabShareOpen(true)}
+            title="Collaborative share"
+          >
+            <Share2 className="w-4 h-4" />
+          </Button>
           <ExportButton 
             projectId={project.id || ''}
             projectName={project.name}
@@ -214,7 +227,16 @@ export function VaultStructureView({
           </div>
         )}
       </div>
+
+      <ShareResourceModal
+        open={collabShareOpen}
+        onOpenChange={setCollabShareOpen}
+        resourceType={currentFolder ? 'FOLDER' : 'ENVIRONMENT'}
+        resourceId={folderId || envId}
+        resourceName={currentFolder?.name || environment.name}
+        projectId={projectId}
+        envId={envId}
+      />
     </main>
   );
 }
-

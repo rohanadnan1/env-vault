@@ -11,6 +11,7 @@ datasource db {
 model User {
   id            String    @id @default(cuid())
   email         String    @unique
+  emailVerified DateTime?
   name          String?
   password      String?
   image         String?
@@ -38,6 +39,41 @@ model User {
   recoveryCodes   RecoveryCode[]
   trustedDevices  TrustedDevice[]
   loginChallenges LoginChallenge[]
+  emailVerificationCodes EmailVerificationCode[]
+  passwordResetTokens    PasswordResetToken[]
+
+  sentInvitations      ShareInvitation[] @relation("SentInvitations")
+  receivedInvitations  ShareInvitation[] @relation("ReceivedInvitations")
+  shareAccessLogs      ShareAccessLog[]
+  shareDownloadLogs    ShareDownloadLog[]
+  shareEditRequests    ShareEditRequest[]
+  shareComments        ShareComment[]
+}
+
+model EmailVerificationCode {
+  id         String   @id @default(cuid())
+  userId     String
+  user       User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  codeHash   String
+  expiresAt  DateTime
+  consumedAt DateTime?
+  createdAt  DateTime @default(now())
+
+  @@index([userId, expiresAt])
+  @@index([userId, codeHash])
+}
+
+model PasswordResetToken {
+  id         String   @id @default(cuid())
+  userId     String
+  user       User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  tokenHash  String
+  expiresAt  DateTime
+  consumedAt DateTime?
+  createdAt  DateTime @default(now())
+
+  @@index([userId, expiresAt])
+  @@index([userId, tokenHash])
 }
 
 model TrustedDevice {
@@ -95,8 +131,9 @@ model Project {
   userId      String
   user        User      @relation(fields: [userId], references: [id], onDelete: Cascade)
  
-  environments Environment[]
-  shares       Share[]
+  environments    Environment[]
+  shares          Share[]
+  shareInvitations ShareInvitation[] @relation("ProjectShareInvitations")
 }
  
 model Environment {
@@ -315,4 +352,167 @@ model VerificationToken {
   expires    DateTime
 
   @@unique([identifier, token])
+}
+
+// ── Collaborative Share Invitation ──────────────────────────────────
+model ShareInvitation {
+  id              String    @id @default(cuid())
+  ownerId         String
+  owner           User      @relation("SentInvitations", fields: [ownerId], references: [id], onDelete: Cascade)
+  recipientEmail  String
+  recipientId     String?
+  recipient       User?     @relation("ReceivedInvitations", fields: [recipientId], references: [id])
+
+  resourceType    ShareResourceType
+  resourceId      String
+  projectId       String?
+  project         Project?  @relation("ProjectShareInvitations", fields: [projectId], references: [id], onDelete: Cascade)
+
+  permission      SharePermission    @default(READ_ONLY)
+  versionMode     ShareVersionMode   @default(LATEST)
+  specificVersionId String?
+
+  expiresAt       DateTime?
+  ttlDays         Int?
+
+  inviteToken     String    @unique
+  status          InviteStatus @default(PENDING)
+  revokedAt       DateTime?
+  acceptedAt      DateTime?
+  firstAccessedAt DateTime?
+
+  shareEncryptionSalt String
+  encryptedShareKey   String
+  shareKeyIv          String?
+
+  bundleEncrypted String?
+  bundleIv        String?
+  encryptionMode  String    @default("collaborative")
+
+  note            String?   @db.Text
+  createdAt       DateTime  @default(now())
+  updatedAt       DateTime  @updatedAt
+
+  accessLogs      ShareAccessLog[]
+  editRequests    ShareEditRequest[]
+  comments        ShareComment[]
+  downloadLogs    ShareDownloadLog[]
+
+  @@index([ownerId])
+  @@index([recipientEmail])
+  @@index([recipientId])
+  @@index([resourceType, resourceId])
+  @@index([inviteToken])
+}
+
+enum ShareResourceType {
+  PROJECT
+  ENVIRONMENT
+  FOLDER
+  FILE
+  BUNDLE
+  SECRET
+}
+
+enum SharePermission {
+  READ_ONLY
+  COMMENT
+  EDIT
+}
+
+enum ShareVersionMode {
+  LATEST
+  SPECIFIC
+  ALL
+}
+
+enum InviteStatus {
+  PENDING
+  ACCEPTED
+  REVOKED
+  EXPIRED
+}
+
+// ── Access Logs ─────────────────────────────────────────────────────
+model ShareAccessLog {
+  id              String   @id @default(cuid())
+  invitationId    String
+  invitation      ShareInvitation @relation(fields: [invitationId], references: [id], onDelete: Cascade)
+  userId          String?
+  user            User?    @relation(fields: [userId], references: [id])
+  action          String
+  resourceDetail  String?
+  ipAddress       String?
+  userAgent       String?
+  accessedAt      DateTime @default(now())
+
+  @@index([invitationId, accessedAt])
+}
+
+// ── Download Notifications ──────────────────────────────────────────
+model ShareDownloadLog {
+  id              String   @id @default(cuid())
+  invitationId    String
+  invitation      ShareInvitation @relation(fields: [invitationId], references: [id], onDelete: Cascade)
+  userId          String
+  user            User     @relation(fields: [userId], references: [id])
+  fileName        String
+  fileType        String
+  ownerNotified   Boolean  @default(false)
+  downloadedAt    DateTime @default(now())
+
+  @@index([invitationId])
+}
+
+// ── Edit Requests (PR-like) ─────────────────────────────────────────
+model ShareEditRequest {
+  id              String   @id @default(cuid())
+  invitationId    String
+  invitation      ShareInvitation @relation(fields: [invitationId], references: [id], onDelete: Cascade)
+  requesterId     String
+  requester       User     @relation(fields: [requesterId], references: [id])
+
+  resourceType    ShareResourceType
+  resourceId      String
+  title           String
+  description     String?  @db.Text
+
+  proposedEncrypted String  @db.Text
+  proposedIv        String
+  previousVersionId String?
+
+  status          EditRequestStatus @default(PENDING)
+  reviewedAt      DateTime?
+  reviewNote      String?
+
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+
+  @@index([invitationId, status])
+}
+
+enum EditRequestStatus {
+  PENDING
+  APPROVED
+  REJECTED
+  MERGED
+}
+
+// ── Comments on shared resources ────────────────────────────────────
+model ShareComment {
+  id              String   @id @default(cuid())
+  invitationId    String
+  invitation      ShareInvitation @relation(fields: [invitationId], references: [id], onDelete: Cascade)
+  authorId        String
+  author          User     @relation(fields: [authorId], references: [id])
+  content         String   @db.Text
+  iv              String?
+  isEncrypted     Boolean  @default(true)
+  parentId        String?
+  parent          ShareComment? @relation("CommentThread", fields: [parentId], references: [id])
+  replies         ShareComment[] @relation("CommentThread")
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+
+  @@index([invitationId, createdAt])
 }

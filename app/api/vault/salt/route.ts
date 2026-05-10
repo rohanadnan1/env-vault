@@ -31,7 +31,7 @@ export async function GET() {
       return NextResponse.json({ error: 'User not found' }, { status: 404 });
     }
 
-    const verificationSample = await db.secret.findFirst({
+    const secretVerificationSample = await db.secret.findFirst({
       where: {
         environment: {
           project: {
@@ -47,6 +47,43 @@ export async function GET() {
       },
       orderBy: { updatedAt: 'desc' },
     });
+
+    const fileVerificationSample = await db.vaultFile.findFirst({
+      where: {
+        environment: {
+          project: {
+            userId,
+          },
+        },
+      },
+      select: {
+        name: true,
+        contentEncrypted: true,
+        iv: true,
+        environmentId: true,
+        folderId: true,
+      },
+      orderBy: { updatedAt: 'desc' },
+    });
+
+    const verificationSample = secretVerificationSample
+      ? {
+          type: 'secret' as const,
+          keyName: secretVerificationSample.keyName,
+          valueEncrypted: secretVerificationSample.valueEncrypted,
+          iv: secretVerificationSample.iv,
+          environmentId: secretVerificationSample.environmentId,
+        }
+      : fileVerificationSample
+        ? {
+            type: 'file' as const,
+            keyName: fileVerificationSample.name,
+            valueEncrypted: fileVerificationSample.contentEncrypted,
+            iv: fileVerificationSample.iv,
+            environmentId: fileVerificationSample.environmentId,
+            folderId: fileVerificationSample.folderId,
+          }
+        : null;
 
     if (user.vaultSalt) {
       return NextResponse.json({

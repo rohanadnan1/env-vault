@@ -3,9 +3,10 @@ import { auth } from '@/lib/auth';
 import { db } from '@/lib/db';
 import { z } from 'zod';
 import crypto from 'crypto';
-import { Resend } from 'resend';
-
-// Move Resend initialization inside the handler to prevent build-time errors
+import {
+  getEmailBaseUrl,
+  sendBrevoTransactionalEmail,
+} from '@/lib/email/brevo';
 
 const CreateShareSchema = z.object({
   projectId: z.string().optional(),
@@ -52,7 +53,7 @@ export async function POST(req: Request) {
 
     // Generate a secure access token
     const accessToken = crypto.randomBytes(32).toString('hex');
-    const shareUrl = `${process.env.NEXT_PUBLIC_APP_URL || 'http://localhost:3000'}/share/${accessToken}`;
+    const shareUrl = `${getEmailBaseUrl()}/share/${accessToken}`;
 
     const share = await db.share.create({
       data: {
@@ -73,38 +74,56 @@ export async function POST(req: Request) {
 
     // 7. Send email if recipient provided
     if (data.recipientEmail) {
-      if (!process.env.RESEND_API_KEY) {
-        console.error('RESEND_API_KEY is missing. Email not sent.');
-      } else {
-        try {
-          const resend = new Resend(process.env.RESEND_API_KEY);
-          await resend.emails.send({
-          from: process.env.RESEND_FROM || 'EnVault <onboarding@resend.dev>',
-          to: data.recipientEmail,
-          subject: `Secure secrets shared with you: ${scopeName}`,
-          html: `
-            <div style="font-family: sans-serif; max-width: 600px; margin: 0 auto; padding: 20px; border: 1px solid #e2e8f0; border-radius: 12px;">
-              <h1 style="color: #4f46e5; font-size: 24px; font-weight: 800; margin-bottom: 8px;">EnVault Link</h1>
-              <p style="color: #64748b; font-size: 16px; margin-bottom: 24px;">${session.user.name || 'A user'} has shared a secure secrets bundle with you.</p>
-              
-              <div style="background-color: #f8fafc; padding: 16px; border-radius: 8px; margin-bottom: 24px; border-left: 4px solid #4f46e5;">
-                <p style="margin: 0; font-size: 14px; font-weight: 600; color: #1e293b;">Access Link:</p>
-                <a href="${shareUrl}" style="color: #4f46e5; word-break: break-all; font-family: monospace; font-size: 13px;">${shareUrl}</a>
-              </div>
+      try {
+        const ownerName = session.user.name || 'A user';
+        const expiryLabel = data.expiresAt
+          ? new Date(data.expiresAt).toLocaleDateString()
+          : 'No expiry';
+        const noteBlock = data.note
+          ? `<p style="color:#475569;font-style:italic;font-size:14px;margin-bottom:24px">"${escapeHtml(data.note)}"</p>`
+          : '';
 
-              ${data.note ? `<p style="color: #475569; font-style: italic; font-size: 14px; margin-bottom: 24px;">"${data.note}"</p>` : ''}
-              
-              <p style="color: #ef4444; font-size: 12px; font-weight: 600;">IMPORTANT: You will need the passphrase provided separately by the sender to unlock these secrets.</p>
-              <hr style="border: 0; border-top: 1px solid #e2e8f0; margin: 24px 0;" />
-              <p style="color: #94a3b8; font-size: 11px;">This is an automated message from EnVault Security.</p>
+        await sendBrevoTransactionalEmail({
+          to: [{ email: data.recipientEmail }],
+          subject: `Secure secrets shared with you: ${scopeName}`,
+          htmlContent: `<div style="font-family: sans-serif; max-width: 600px; margin: 0 auto; padding: 20px; border: 1px solid #e2e8f0; border-radius: 12px;">
+            <h1 style="color: #4f46e5; font-size: 24px; font-weight: 800; margin-bottom: 8px;">EnVault Link</h1>
+            <p style="color: #64748b; font-size: 16px; margin-bottom: 24px;">${escapeHtml(ownerName)} has shared a secure secrets bundle with you.</p>
+            <div style="background-color: #f8fafc; padding: 16px; border-radius: 8px; margin-bottom: 24px; border-left: 4px solid #4f46e5;">
+              <p style="margin: 0 0 8px; font-size: 12px; font-weight: 600; color: #64748b; text-transform: uppercase;">${escapeHtml(data.scopeType)} · ${escapeHtml(scopeName)}</p>
+              <p style="margin: 0; font-size: 14px; font-weight: 600; color: #1e293b;">Access Link:</p>
+              <a href="${shareUrl}" style="color: #4f46e5; word-break: break-all; font-family: monospace; font-size: 13px;">${shareUrl}</a>
+              <p style="margin: 8px 0 0; font-size: 13px; color: #64748b;">Expires: ${escapeHtml(expiryLabel)}</p>
             </div>
-          `
+            ${noteBlock}
+            <p style="color: #ef4444; font-size: 12px; font-weight: 600;">IMPORTANT: You will need the passphrase provided separately by the sender to unlock these secrets.</p>
+            <hr style="border: 0; border-top: 1px solid #e2e8f0; margin: 24px 0;" />
+            <p style="color: #94a3b8; font-size: 11px;">This is an automated message from EnVault Security.</p>
+          </div>`,
+          textContent: [
+            'EnVault Link',
+            `${ownerName} has shared a secure secrets bundle with you.`,
+            `${data.scopeType} · ${scopeName}`,
+            `Access link: ${shareUrl}`,
+            `Expires: ${expiryLabel}`,
+            data.note ? `Note: ${data.note}` : null,
+            'You will need the passphrase provided separately by the sender to unlock these secrets.',
+          ].filter(Boolean).join('\n'),
         });
       } catch (err) {
+        await db.share.delete({ where: { id: share.id } }).catch(() => undefined);
         console.error('Failed to send email:', err);
+        return NextResponse.json(
+          {
+            error:
+              err instanceof Error && err.message
+                ? `Share email failed: ${err.message}`
+                : 'Share email failed',
+          },
+          { status: 502 }
+        );
       }
     }
-  }
 
   return NextResponse.json({
       id: share.id,
@@ -116,4 +135,13 @@ export async function POST(req: Request) {
     console.error(e);
     return NextResponse.json({ error: 'Internal Server Error' }, { status: 500 });
   }
+}
+
+function escapeHtml(value: string) {
+  return value
+    .replaceAll('&', '&amp;')
+    .replaceAll('<', '&lt;')
+    .replaceAll('>', '&gt;')
+    .replaceAll('"', '&quot;')
+    .replaceAll("'", '&#39;');
 }

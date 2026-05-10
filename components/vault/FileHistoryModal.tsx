@@ -285,12 +285,15 @@ export function FileHistoryModal({
     try {
       let decrypted: string;
       try {
-        const aad = `${item.name}:${environmentId}`;
+        const aad = `${item.name}:${folderId || environmentId}`;
         decrypted = await decryptSecret(item.contentEncrypted, item.iv, derivedKey, aad);
       } catch {
-        if (!folderId) throw new Error('Decryption failed');
-        const fallbackAad = `${item.name}:${folderId}`;
-        decrypted = await decryptSecret(item.contentEncrypted, item.iv, derivedKey, fallbackAad);
+        try {
+          const aad2 = `${item.name}:${environmentId}`;
+          decrypted = await decryptSecret(item.contentEncrypted, item.iv, derivedKey, aad2);
+        } catch {
+          decrypted = await decryptSecret(item.contentEncrypted, item.iv, derivedKey);
+        }
       }
 
       setRevealedIds((prev) => ({ ...prev, [item.id]: decrypted }));

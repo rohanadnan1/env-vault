@@ -5,6 +5,7 @@ import { useSession } from 'next-auth/react';
 import { useVaultStore } from '@/lib/store/vaultStore';
 import { deriveVaultKey } from '@/lib/crypto/vault';
 import { decryptSecret } from '@/lib/crypto/decrypt';
+import { encryptSecret } from '@/lib/crypto/encrypt';
 import {
   isBiometricSupported,
   isBiometricEnrolled,
@@ -33,19 +34,19 @@ import { cn } from '@/lib/utils';
 import {
   readVaultUnlockAlternativeCache,
   syncVaultUnlockAlternativeCacheFromServer,
-  updateVaultUnlockAlternativeCache,
 } from '@/lib/vault-unlock-options-cache';
 
 type UnlockMode = 'password' | 'recovery' | 'totp';
 
-const VAULT_SALT_CACHE_KEY = 'envault_vault_salt';
 const VAULT_SALT_UNAVAILABLE_ERROR = 'VAULT_SALT_UNAVAILABLE';
 
 type VerificationSample = {
+  type: 'secret' | 'file';
   keyName: string;
   valueEncrypted: string;
   iv: string;
   environmentId: string;
+  folderId?: string | null;
 } | null;
 
 type VaultSaltPayload = {
@@ -93,11 +94,10 @@ export function VaultUnlock() {
 
     isBiometricSupported().then((isSupported) => {
       setBiometricSupport(isSupported);
-      if (isSupported && !isBiometricEnrolled(userId)) setEnrollBio(true);
     });
     setBiometricEnrolled(isBiometricEnrolled(userId));
 
-    const cachedAlternativeState = readVaultUnlockAlternativeCache();
+    const cachedAlternativeState = readVaultUnlockAlternativeCache(userId);
     const cached2FA = cachedAlternativeState.has2FAVaultUnlock;
     const cachedRecovery = cachedAlternativeState.hasRecoveryCodes;
 
@@ -107,7 +107,7 @@ export function VaultUnlock() {
       setIsCheckingAlternatives(false);
     }
 
-    syncVaultUnlockAlternativeCacheFromServer()
+    syncVaultUnlockAlternativeCacheFromServer(userId)
       .then((latest) => {
         if (!isMounted) return;
 
@@ -147,23 +147,81 @@ export function VaultUnlock() {
     key: CryptoKey,
     verificationSample?: VerificationSample
   ) => {
-    if (!verificationSample) return true;
-    const aad = `${verificationSample.keyName}:${verificationSample.environmentId}`;
-    await decryptSecret(verificationSample.valueEncrypted, verificationSample.iv, key, aad);
+    if (verificationSample) {
+      if (verificationSample.type === 'secret') {
+        const aad = `${verificationSample.keyName}:${verificationSample.environmentId}`;
+        await decryptSecret(verificationSample.valueEncrypted, verificationSample.iv, key, aad);
+        return true;
+      }
+
+      const aadCandidates = [
+        `${verificationSample.keyName}:${verificationSample.environmentId}`,
+        verificationSample.folderId ? `${verificationSample.keyName}:${verificationSample.folderId}` : null,
+        null,
+      ];
+
+      for (const aad of aadCandidates) {
+        try {
+          await decryptSecret(
+            verificationSample.valueEncrypted,
+            verificationSample.iv,
+            key,
+            aad ?? undefined
+          );
+          return true;
+        } catch {
+          // Some legacy files were encrypted with folder-scoped AAD or no AAD.
+        }
+      }
+
+      throw new Error('VAULT_VERIFICATION_FAILED');
+    }
+
+    const verifyData = readVaultVerifyData(userId);
+    if (verifyData) {
+      await decryptSecret(verifyData.encrypted, verifyData.iv, key);
+      return true;
+    }
+
     return true;
   };
 
-  const readCachedVaultSalt = () => {
+  const getVaultSaltCacheKey = (uid: string) => `envault_vault_salt_${uid}`;
+  const getVaultVerifyDataKey = (uid: string) => `envault_vault_verify_${uid}`;
+
+  const readVaultVerifyData = (uid: string) => {
     try {
-      return localStorage.getItem(VAULT_SALT_CACHE_KEY);
+      if (!uid) return null;
+      const raw = localStorage.getItem(getVaultVerifyDataKey(uid));
+      if (!raw) return null;
+      return JSON.parse(raw) as { encrypted: string; iv: string };
     } catch {
       return null;
     }
   };
 
-  const writeCachedVaultSalt = (salt: string) => {
+  const writeVaultVerifyData = (uid: string, encrypted: string, iv: string) => {
     try {
-      localStorage.setItem(VAULT_SALT_CACHE_KEY, salt);
+      if (!uid) return;
+      localStorage.setItem(getVaultVerifyDataKey(uid), JSON.stringify({ encrypted, iv }));
+    } catch {
+      // Ignore storage failures.
+    }
+  };
+
+  const readCachedVaultSalt = (uid: string) => {
+    try {
+      if (!uid) return null;
+      return localStorage.getItem(getVaultSaltCacheKey(uid));
+    } catch {
+      return null;
+    }
+  };
+
+  const writeCachedVaultSalt = (uid: string, salt: string) => {
+    try {
+      if (!uid) return;
+      localStorage.setItem(getVaultSaltCacheKey(uid), salt);
     } catch {
       // Ignore storage failures.
     }
@@ -177,7 +235,7 @@ export function VaultUnlock() {
         const data = await res.json();
         if (!data?.salt) throw new Error(VAULT_SALT_UNAVAILABLE_ERROR);
 
-        writeCachedVaultSalt(data.salt);
+        writeCachedVaultSalt(userId, data.salt);
         if (data.isNewSetup) setIsNewSetup(true);
 
         return {
@@ -190,7 +248,7 @@ export function VaultUnlock() {
       // Fallback to cached salt when server/auth is temporarily unavailable.
     }
 
-    const cachedSalt = readCachedVaultSalt();
+    const cachedSalt = readCachedVaultSalt(userId);
     if (cachedSalt) {
       return {
         salt: cachedSalt,
@@ -203,31 +261,32 @@ export function VaultUnlock() {
   };
 
   const doUnlock = async (masterPw: string, enroll: boolean) => {
-    const { salt, verificationSample } = await fetchVaultSalt();
+    const { salt, verificationSample, isNewSetup } = await fetchVaultSalt();
+    const key = await deriveVaultKey(masterPw, salt);
+    await verifyDerivedKey(key, verificationSample);
 
-    return new Promise<void>((resolve, reject) => {
-      setTimeout(async () => {
-        try {
-          const key = await deriveVaultKey(masterPw, salt);
-          await verifyDerivedKey(key, verificationSample);
+    unlock(key);
 
-          if (enroll) {
-            try {
-              await enrollBiometrics(masterPw, userId);
-              setBiometricEnrolled(true);
-              toast.success('Biometric unlock enabled');
-            } catch {
-              toast.error('Failed to enable biometric unlock');
-            }
-          }
+    if (isNewSetup && !verificationSample) {
+      try {
+        const { valueEncrypted, iv } = await encryptSecret('envault-verify', key);
+        writeVaultVerifyData(userId, valueEncrypted, iv);
+      } catch {
+        // Non-critical — verification will use future secrets
+      }
+    }
 
-          unlock(key);
-          resolve();
-        } catch (err) {
-          reject(err);
-        }
-      }, 10);
-    });
+    if (enroll) {
+      try {
+        await enrollBiometrics(masterPw, userId);
+        setBiometricEnrolled(true);
+        toast.success('Touch ID enabled — next time you can unlock with your fingerprint');
+      } catch {
+        toast('Touch ID not set up — you can enable it later in Settings', {
+          description: 'Your vault is unlocked and ready to use.',
+        });
+      }
+    }
   };
 
   const handleBiometricUnlock = async () => {
@@ -442,9 +501,9 @@ export function VaultUnlock() {
                 <div className="flex flex-col">
                   <span className="text-sm font-bold text-slate-900 flex items-center gap-1.5">
                     <Fingerprint className="w-4 h-4 text-indigo-600" />
-                    Link Touch ID
+                    Enable Touch ID unlock
                   </span>
-                  <span className="text-[10px] text-slate-500 font-medium">Auto-unlock on this device from now on</span>
+                  <span className="text-[10px] text-slate-500 font-medium">Skip the password next time — optional, can be set up later in Settings</span>
                 </div>
               </label>
             )}

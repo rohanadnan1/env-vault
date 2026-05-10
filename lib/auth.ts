@@ -1,6 +1,5 @@
 import NextAuth from "next-auth";
 import Credentials from "next-auth/providers/credentials";
-import Resend from "next-auth/providers/resend";
 import { PrismaAdapter } from "@auth/prisma-adapter";
 import { db } from "./db";
 import bcrypt from "bcryptjs";
@@ -9,19 +8,20 @@ import { authConfig } from "./auth.config";
 const SESSION_VERSION_CHECK_INTERVAL_MS = 60_000;
 
 type SessionVersionLookupResult =
-  | { status: "ok"; sessionVersion: number | null }
+  | { status: "ok"; sessionVersion: number | null; emailVerified: boolean }
   | { status: "unavailable" };
 
 async function lookupSessionVersion(userId: string): Promise<SessionVersionLookupResult> {
   try {
     const dbUser = await db.user.findUnique({
       where: { id: userId },
-      select: { sessionVersion: true },
+      select: { sessionVersion: true, emailVerified: true },
     });
 
     return {
       status: "ok",
       sessionVersion: dbUser?.sessionVersion ?? null,
+      emailVerified: !!dbUser?.emailVerified,
     };
   } catch (error) {
     // Keep existing sessions alive during transient DB/network outages.
@@ -52,6 +52,7 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
             result.status === "ok" && result.sessionVersion !== null
               ? result.sessionVersion
               : (token.sessionVersion as number | undefined) ?? 1;
+          token.emailVerified = result.status === "ok" ? result.emailVerified : false;
           token.sessionVersionCheckedAt = Date.now();
         } else if (trigger === 'update') {
           // Forced refresh (keep current device after sign-out-all)
@@ -60,7 +61,9 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
 
             if (result.status === "ok") {
               if (result.sessionVersion === null) return null;
+              if (!result.emailVerified) return null;
               token.sessionVersion = result.sessionVersion;
+              token.emailVerified = result.emailVerified;
             }
 
             token.sessionVersionCheckedAt = Date.now();
@@ -81,9 +84,10 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
                   : (result.sessionVersion ?? 1);
 
               token.sessionVersion = tokenVersion;
+              token.emailVerified = result.emailVerified;
               token.sessionVersionCheckedAt = now;
 
-              if (result.sessionVersion === null || result.sessionVersion !== tokenVersion) {
+              if (!result.emailVerified || result.sessionVersion === null || result.sessionVersion !== tokenVersion) {
                 return null; // invalidate — user was signed out from all devices
               }
             } else {
@@ -113,10 +117,6 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
     },
   },
   providers: [
-    Resend({
-      from: process.env.RESEND_FROM,
-      apiKey: process.env.RESEND_API_KEY,
-    }),
     Credentials({
       name: "Credentials",
       credentials: {
@@ -131,6 +131,7 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
         });
         
         if (!user || !user.password) return null;
+        if (!user.emailVerified) return null;
 
         const isMatch = await bcrypt.compare(
           credentials.password as string,

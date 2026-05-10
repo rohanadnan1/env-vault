@@ -3,6 +3,7 @@ import { db } from '@/lib/db';
 import { Sidebar } from '@/components/layout/Sidebar';
 import { Navbar } from '@/components/layout/Navbar';
 import { VaultClientWrapper } from '@/components/vault/VaultClientWrapper';
+import { NotificationBanner } from '@/components/notifications/NotificationBanner';
 import { redirect } from 'next/navigation';
 
 export default async function VaultLayout({ children }: { children: React.ReactNode }) {
@@ -14,6 +15,8 @@ export default async function VaultLayout({ children }: { children: React.ReactN
 
   // Fetch projects for the sidebar, but keep layout alive on transient DB issues.
   let projects: { id: string; name: string; emoji: string; color: string }[] = [];
+  let sharedCount = 0;
+  const sessionEmail = session.user.email?.toLowerCase();
   try {
     projects = await db.project.findMany({
       where: { userId: session.user.id },
@@ -25,6 +28,16 @@ export default async function VaultLayout({ children }: { children: React.ReactN
         color: true,
       }
     });
+
+    sharedCount = await db.shareInvitation.count({
+      where: {
+        status: { in: ['ACCEPTED', 'PENDING'] },
+        OR: [
+          { recipientId: session.user.id },
+          ...(sessionEmail ? [{ recipientEmail: { equals: sessionEmail, mode: 'insensitive' as const } }] : []),
+        ],
+      }
+    });
   } catch (error) {
     console.error('[VAULT_LAYOUT_PROJECTS]', error);
   }
@@ -32,9 +45,10 @@ export default async function VaultLayout({ children }: { children: React.ReactN
   return (
     <div className="flex h-screen bg-slate-50">
       <VaultClientWrapper>
-        <Sidebar projects={projects} />
+        <Sidebar projects={projects} sharedCount={sharedCount} />
         <div className="flex-1 flex flex-col min-w-0 h-screen overflow-hidden">
           <Navbar />
+          <NotificationBanner />
           <main className="flex-1 overflow-auto bg-slate-50 p-6">
             {children}
           </main>
