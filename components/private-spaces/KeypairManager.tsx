@@ -9,9 +9,10 @@ import { readPrivateSpaceKeyPair, savePrivateSpaceKeyPair, generatePrivateSpaceK
 
 type Props = {
   userId: string;
+  customButtonClass?: string;
 };
 
-export function KeypairManager({ userId }: Props) {
+export function KeypairManager({ userId, customButtonClass }: Props) {
   const [isHydrated, setIsHydrated] = useState(false);
   const [existingKeypair, setExistingKeypair] = useState<PrivateSpaceKeyPairRecord | null>(null);
   const [showExport, setShowExport] = useState(false);
@@ -94,17 +95,20 @@ export function KeypairManager({ userId }: Props) {
     <>
       <div className="flex items-center gap-2">
         {!isHydrated ? (
-          <Button variant="ghost" size="sm" className="text-[10px] text-slate-400" disabled>
+          <Button variant="ghost" size="sm" className={customButtonClass ?? "text-[10px] text-slate-400"} disabled>
             <KeyRound className="w-3 h-3 mr-1" /> Keys
           </Button>
-        ) : existingKeypair ? (
-          <Button variant="ghost" size="sm" className="text-[10px] text-slate-400 hover:text-indigo-600" onClick={() => setShowExport(true)}>
-            <Download className="w-3 h-3 mr-1" /> Export keys
-          </Button>
         ) : (
-          <Button variant="ghost" size="sm" className="text-[10px] text-amber-600 hover:text-amber-700" onClick={() => setShowImport(true)}>
-            <Upload className="w-3 h-3 mr-1" /> Import keys
-          </Button>
+          <>
+            {existingKeypair && (
+              <Button variant="ghost" size="sm" className={customButtonClass ?? "text-[10px] text-slate-400 hover:text-indigo-600"} onClick={() => setShowExport(true)}>
+                <Download className="w-3 h-3 mr-1" /> Export keys
+              </Button>
+            )}
+            <Button variant="ghost" size="sm" className={customButtonClass ?? "text-[10px] text-amber-600 hover:text-amber-700"} onClick={() => setShowImport(true)}>
+              <Upload className="w-3 h-3 mr-1" /> Import keys
+            </Button>
+          </>
         )}
       </div>
 
@@ -144,6 +148,7 @@ export function KeypairManager({ userId }: Props) {
             </DialogTitle>
             <DialogDescription>
               Upload a previously exported key file to access your private spaces on this device.
+              {existingKeypair && <span className="block mt-2 text-rose-600 font-medium">Warning: This will overwrite your currently generated device keys.</span>}
             </DialogDescription>
           </DialogHeader>
           <div className="space-y-3">
