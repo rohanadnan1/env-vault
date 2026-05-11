@@ -2922,6 +2922,7 @@ export function PrivateSpaceWorkspace({ spaceId, userId, initialSpace = null, in
             <Button variant="ghost" size="sm" className="text-white/70 hover:text-white hover:bg-white/10" onClick={leaveSpace} disabled={isLeavingSpace}>
               Leave Space
             </Button>
+            <KeypairManager userId={userId} customButtonClass="text-white/70 hover:text-white hover:bg-white/10 border border-transparent" />
           </div>
         </div>
       </motion.div>
