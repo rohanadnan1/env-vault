@@ -3,7 +3,11 @@ import { auth } from '@/lib/auth';
 import { db } from '@/lib/db';
 import { z } from 'zod';
 import { ShareDownloadNotifySchema } from '@/lib/validations/schemas';
-import { isInvitationRecipientMatch } from '@/lib/sharing-access';
+import {
+  canRecipientUseAcceptedShare,
+  isShareInvitationEnded,
+  isShareInvitationExpired,
+} from '@/lib/sharing-access';
 
 export async function POST(req: Request) {
   const session = await auth();
@@ -18,8 +22,11 @@ export async function POST(req: Request) {
     });
     if (!invitation) return NextResponse.json({ error: 'Invitation not found' }, { status: 404 });
 
-    const isRecipient = isInvitationRecipientMatch(invitation, session);
-    if (!isRecipient) {
+    if (isShareInvitationEnded(invitation.status) || isShareInvitationExpired(invitation)) {
+      return NextResponse.json({ error: 'Invitation is not active' }, { status: 410 });
+    }
+
+    if (!canRecipientUseAcceptedShare(invitation, session)) {
       return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
     }
 

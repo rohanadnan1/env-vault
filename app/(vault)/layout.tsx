@@ -4,6 +4,7 @@ import { Sidebar } from '@/components/layout/Sidebar';
 import { Navbar } from '@/components/layout/Navbar';
 import { VaultClientWrapper } from '@/components/vault/VaultClientWrapper';
 import { NotificationBanner } from '@/components/notifications/NotificationBanner';
+import { AppProviders } from '@/components/providers/AppProviders';
 import { redirect } from 'next/navigation';
 
 export default async function VaultLayout({ children }: { children: React.ReactNode }) {
@@ -31,7 +32,7 @@ export default async function VaultLayout({ children }: { children: React.ReactN
 
     sharedCount = await db.shareInvitation.count({
       where: {
-        status: { in: ['ACCEPTED', 'PENDING'] },
+        status: 'ACCEPTED',
         OR: [
           { recipientId: session.user.id },
           ...(sessionEmail ? [{ recipientEmail: { equals: sessionEmail, mode: 'insensitive' as const } }] : []),
@@ -50,7 +51,7 @@ export default async function VaultLayout({ children }: { children: React.ReactN
           <Navbar />
           <NotificationBanner />
           <main className="flex-1 overflow-auto bg-slate-50 p-6">
-            {children}
+            <AppProviders>{children}</AppProviders>
           </main>
         </div>
       </VaultClientWrapper>

@@ -186,7 +186,7 @@ export default function SharedResourcePage({ params }: { params: Promise<{ invit
 
   const canComment = inviteMeta?.permission === 'COMMENT' || inviteMeta?.permission === 'EDIT';
   const canEdit = inviteMeta?.permission === 'EDIT';
-  const isActive = inviteMeta?.status === 'ACCEPTED' || inviteMeta?.status === 'PENDING';
+  const isActive = inviteMeta?.status === 'ACCEPTED';
   const decryptedSecrets = decryptedEntries.filter((entry): entry is Extract<SharedBundleEntry, { kind: 'SECRET' }> => entry.kind === 'SECRET');
   const decryptedFiles = decryptedEntries.filter((entry): entry is Extract<SharedBundleEntry, { kind: 'FILE' }> => entry.kind === 'FILE');
 
@@ -196,7 +196,8 @@ export default function SharedResourcePage({ params }: { params: Promise<{ invit
         const res = await fetch(`/api/sharing/resource/${invitationId}`);
         const json = await res.json();
         if (!res.ok) {
-          if (res.status === 410) setError('Access has been revoked or expired');
+          if (res.status === 410) setError(json.error || 'Access has ended for this shared resource');
+          else if (res.status === 409) setError(json.error || 'Accept the invitation before opening this resource');
           else if (res.status === 403) setError('You do not have access to this resource');
           else setError(json.error || 'Failed to load resource');
           setIsLoading(false);
@@ -311,17 +312,6 @@ export default function SharedResourcePage({ params }: { params: Promise<{ invit
           plaintext: entry.plaintext,
         };
       });
-
-      if (inviteMeta?.status === 'PENDING' && resource.inviteToken) {
-        const acceptRes = await fetch(`/api/sharing/invite/${resource.inviteToken}/accept`, {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({}),
-        });
-        if (acceptRes.ok) {
-          setInviteMeta((prev) => prev ? { ...prev, status: 'ACCEPTED' } : prev);
-        }
-      }
 
       setShareKey(nextShareKey);
       setDecryptedEntries(normalized);
@@ -504,7 +494,7 @@ export default function SharedResourcePage({ params }: { params: Promise<{ invit
         const json = await res.json().catch(() => ({}));
         throw new Error(json.error || 'Failed');
       }
-      setInviteMeta((prev) => prev ? { ...prev, status: 'REVOKED' } : prev);
+      setInviteMeta((prev) => prev ? { ...prev, status: 'LEFT' } : prev);
       setShowLeaveConfirm(false);
       toast.success('You have left this shared resource');
     } catch (err) {

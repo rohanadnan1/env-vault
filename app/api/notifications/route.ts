@@ -26,6 +26,7 @@ export async function GET(req: Request) {
       const newShares = await db.shareInvitation.findMany({
         where: {
           createdAt: { gt: sinceDate },
+          status: { in: ['PENDING', 'ACCEPTED'] },
           OR: [
             { recipientId: session.user.id },
             ...(sessionEmail ? [{ recipientEmail: { equals: sessionEmail, mode: 'insensitive' as const } }] : []),
@@ -43,7 +44,7 @@ export async function GET(req: Request) {
           id: `share-${inv.id}`,
           type: 'NEW_SHARE',
           message: `${inv.owner.name || inv.owner.email} shared a ${inv.resourceType.toLowerCase()} with you`,
-          actionUrl: `/shared/${inv.id}`,
+          actionUrl: inv.status === 'PENDING' ? `/sharing/accept/${inv.inviteToken}` : `/shared/${inv.id}`,
           createdAt: inv.createdAt.toISOString(),
         });
       }
@@ -115,8 +116,8 @@ export async function GET(req: Request) {
           invitation: {
             OR: [
               { ownerId: session.user.id },
-              { recipientId: session.user.id },
-              ...(sessionEmail ? [{ recipientEmail: { equals: sessionEmail, mode: 'insensitive' as const } }] : []),
+              { recipientId: session.user.id, status: 'ACCEPTED' },
+              ...(sessionEmail ? [{ recipientEmail: { equals: sessionEmail, mode: 'insensitive' as const }, status: 'ACCEPTED' as const }] : []),
             ],
           },
         },

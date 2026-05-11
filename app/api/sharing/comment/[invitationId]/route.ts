@@ -1,7 +1,12 @@
 import { NextResponse } from 'next/server';
 import { auth } from '@/lib/auth';
 import { db } from '@/lib/db';
-import { isInvitationRecipientMatch } from '@/lib/sharing-access';
+import {
+  canRecipientUseAcceptedShare,
+  isInvitationRecipientMatch,
+  isShareInvitationEnded,
+  isShareInvitationExpired,
+} from '@/lib/sharing-access';
 
 export async function GET(
   _req: Request,
@@ -21,6 +26,14 @@ export async function GET(
     const isRecipient = isInvitationRecipientMatch(invitation, session);
     if (!isOwner && !isRecipient) {
       return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
+    }
+
+    if (isShareInvitationEnded(invitation.status) || isShareInvitationExpired(invitation)) {
+      return NextResponse.json({ error: 'Invitation is not active' }, { status: 410 });
+    }
+
+    if (!isOwner && !canRecipientUseAcceptedShare(invitation, session)) {
+      return NextResponse.json({ error: 'Accept the invitation before viewing comments' }, { status: 409 });
     }
 
     const comments = await db.shareComment.findMany({

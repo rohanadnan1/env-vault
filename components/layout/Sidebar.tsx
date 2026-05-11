@@ -1,11 +1,13 @@
 "use client";
 
-import { useState } from 'react';
+import { useState, useCallback } from 'react';
 import Link from 'next/link';
-import { usePathname } from 'next/navigation';
-import { FolderGit2, Users, Share2, Settings } from 'lucide-react';
+import { usePathname, useRouter } from 'next/navigation';
+import { FolderGit2, Users, Share2, Settings, Boxes } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { CreateProjectModal } from '@/components/vault/CreateProjectModal';
+import { preload } from 'swr';
+import { apiFetcher } from '@/lib/swr-config';
 
 interface Project {
   id: string;
@@ -21,8 +23,27 @@ interface SidebarProps {
 
 export function Sidebar({ projects, sharedCount }: SidebarProps) {
   const pathname = usePathname();
+  const router = useRouter();
+
+  const prefetchProject = useCallback((projectId: string) => {
+    router.prefetch(`/projects/${projectId}`);
+  }, [router]);
+
+  const prefetchRoute = useCallback((href: string) => {
+    router.prefetch(href);
+    if (href === '/spaces') preload('/api/spaces', apiFetcher);
+    if (href === '/sharing') preload('/api/sharing/sent', apiFetcher);
+    if (href === '/shared') preload('/api/sharing/received', apiFetcher);
+  }, [router]);
 
   const navLinks = [
+    {
+      href: '/spaces',
+      label: 'Private Spaces',
+      icon: Boxes,
+      isActive: pathname.startsWith('/spaces'),
+      showCount: false,
+    },
     {
       href: '/shared',
       label: 'Shared With Me',
@@ -69,6 +90,7 @@ export function Sidebar({ projects, sharedCount }: SidebarProps) {
                 <Link
                   key={project.id}
                   href={`/projects/${project.id}`}
+                  onMouseEnter={() => prefetchProject(project.id)}
                   className={cn(
                     "flex items-center gap-3 px-3 py-2 rounded-lg text-sm font-medium transition-all group",
                     isActive 
@@ -101,6 +123,7 @@ export function Sidebar({ projects, sharedCount }: SidebarProps) {
             <Link
               key={link.href}
               href={link.href}
+              onMouseEnter={() => prefetchRoute(link.href)}
               className={cn(
                 "flex items-center gap-3 px-3 py-2 rounded-lg text-sm font-medium transition-all group",
                 link.isActive

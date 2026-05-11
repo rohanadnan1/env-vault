@@ -3,7 +3,12 @@ import { auth } from '@/lib/auth';
 import { db } from '@/lib/db';
 import { z } from 'zod';
 import { CreateShareEditRequestSchema } from '@/lib/validations/schemas';
-import { isInvitationRecipientMatch } from '@/lib/sharing-access';
+import {
+  canRecipientUseAcceptedShare,
+  isInvitationRecipientMatch,
+  isShareInvitationEnded,
+  isShareInvitationExpired,
+} from '@/lib/sharing-access';
 
 export async function GET(req: Request) {
   const session = await auth();
@@ -78,11 +83,14 @@ export async function POST(req: Request) {
     if (!isInvitationRecipientMatch(invitation, session)) {
       return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
     }
+    if (isShareInvitationEnded(invitation.status) || isShareInvitationExpired(invitation)) {
+      return NextResponse.json({ error: 'Invitation is not active' }, { status: 410 });
+    }
+    if (!canRecipientUseAcceptedShare(invitation, session)) {
+      return NextResponse.json({ error: 'Accept the invitation before submitting proposals' }, { status: 409 });
+    }
     if (invitation.permission !== 'EDIT') {
       return NextResponse.json({ error: 'Edit permission required to submit proposals' }, { status: 403 });
-    }
-    if (invitation.status === 'REVOKED' || invitation.status === 'EXPIRED') {
-      return NextResponse.json({ error: 'Invitation is not active' }, { status: 410 });
     }
 
     const editRequest = await db.shareEditRequest.create({

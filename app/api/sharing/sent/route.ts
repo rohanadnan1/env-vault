@@ -7,6 +7,7 @@ export async function GET() {
   if (!session?.user?.id) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
 
   try {
+    const now = new Date();
     const invitations = await db.shareInvitation.findMany({
       where: { ownerId: session.user.id },
       include: {
@@ -19,6 +20,7 @@ export async function GET() {
 
     return NextResponse.json(invitations.map(inv => ({
       ...inv,
+      status: inv.status !== 'EXPIRED' && inv.expiresAt && inv.expiresAt < now ? 'EXPIRED' : inv.status,
       expiresAt: inv.expiresAt?.toISOString() || null,
       createdAt: inv.createdAt.toISOString(),
       updatedAt: inv.updatedAt.toISOString(),

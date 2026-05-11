@@ -20,13 +20,13 @@ export async function POST(req: Request) {
     const result = await db.shareInvitation.updateMany({
       where: {
         projectId,
-        status: { not: 'REVOKED' },
+        status: { in: ['PENDING', 'ACCEPTED'] },
         OR: [
           { recipientId: session.user.id },
           ...(sessionEmail ? [{ recipientEmail: { equals: sessionEmail, mode: 'insensitive' as const } }] : []),
         ],
       },
-      data: { status: 'REVOKED', revokedAt: new Date() },
+      data: { status: 'LEFT' },
     });
 
     return NextResponse.json({ success: true, removed: result.count });

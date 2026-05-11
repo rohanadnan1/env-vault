@@ -81,6 +81,7 @@ function permissionBadgeClass(permission: string) {
 
 function invitationStatus(expiresAt: Date | null, status: string): { label: string; className: string } {
   if (status === 'ACCEPTED') return { label: 'Active', className: 'bg-emerald-100 text-emerald-700 border-emerald-200' };
+  if (status === 'LEFT') return { label: 'Left', className: 'bg-slate-100 text-slate-500 border-slate-200' };
   if (status === 'REVOKED') return { label: 'Revoked', className: 'bg-rose-100 text-rose-700 border-rose-200' };
   if (status === 'EXPIRED') return { label: 'Expired', className: 'bg-slate-100 text-slate-500 border-slate-200' };
   if (status === 'PENDING') return { label: 'Pending', className: 'bg-amber-100 text-amber-700 border-amber-200' };
@@ -116,6 +117,7 @@ export default async function SharedPage() {
   try {
     invitations = await db.shareInvitation.findMany({
       where: {
+        status: { not: 'PENDING' },
         OR: [
           { recipientId: session.user.id },
           ...(sessionEmail ? [{ recipientEmail: { equals: sessionEmail, mode: 'insensitive' as const } }] : []),
@@ -184,7 +186,7 @@ export default async function SharedPage() {
 
   function renderResourceRow(inv: Invitation) {
     const status = invitationStatus(inv.expiresAt, inv.status);
-    const isActive = inv.status === 'ACCEPTED' || inv.status === 'PENDING';
+    const isActive = inv.status === 'ACCEPTED';
     return (
       <Link key={inv.id} href={`/shared/${inv.id}`}>
         <div className="flex items-center justify-between px-5 py-2.5 hover:bg-slate-50 transition-colors cursor-pointer group/item">

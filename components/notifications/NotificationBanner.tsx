@@ -4,6 +4,7 @@ import { useState, useEffect, useCallback, useRef } from 'react';
 import { useRouter } from 'next/navigation';
 import { X, Bell, Share2, FileCheck, MessageSquare, CheckCircle2 } from 'lucide-react';
 import { cn } from '@/lib/utils';
+import { motion, AnimatePresence } from 'framer-motion';
 
 interface Notification {
   id: string;
@@ -55,6 +56,7 @@ export function NotificationBanner() {
   });
   const errorCount = useRef(0);
   const pollTimer = useRef<ReturnType<typeof setInterval> | undefined>(undefined);
+  const [isExpanded, setIsExpanded] = useState(false);
 
   const fetchNotifications = useCallback(async () => {
     if (errorCount.current >= 5) return;
@@ -145,46 +147,102 @@ export function NotificationBanner() {
   if (visible.length === 0) return null;
 
   return (
-    <div className="space-y-2 px-6 pt-3">
+    <motion.div layout className="px-6 pt-3 pb-4">
       {visible.length > 1 && (
-        <button
-          type="button"
-          className="text-[10px] font-medium text-slate-400 hover:text-slate-600 ml-auto block"
-          onClick={markAllSeen}
-        >
-          Dismiss all
-        </button>
-      )}
-      {visible.map(n => {
-        const Icon = TYPE_ICON[n.type] || Bell;
-        const colorClass = TYPE_COLOR[n.type] || '';
-        return (
-          <div
-            key={n.id}
-            className={cn(
-              'rounded-xl border px-4 py-2.5 flex items-center gap-3 shadow-sm transition-all cursor-pointer hover:shadow-md',
-              colorClass
-            )}
-            onClick={() => handleAction(n)}
-            role="alert"
+        <div className="flex justify-between items-center mb-2">
+          <span className="text-[10px] font-medium text-slate-400">
+            {visible.length} notifications
+          </span>
+          <button
+            type="button"
+            className="text-[10px] font-medium text-slate-400 hover:text-slate-600"
+            onClick={markAllSeen}
           >
-            <div className="flex size-8 shrink-0 items-center justify-center rounded-lg bg-white/60">
-              <Icon className="size-4" />
-            </div>
-            <div className="flex-1 min-w-0">
-              <p className="text-xs font-medium truncate">{n.message}</p>
-            </div>
-            <button
-              type="button"
-              className="shrink-0 p-1 rounded-md hover:bg-black/5 transition-colors"
-              onClick={(e) => { e.stopPropagation(); handleDismiss(n.id); }}
-              aria-label="Dismiss"
-            >
-              <X className="size-3.5" />
-            </button>
-          </div>
-        );
-      })}
-    </div>
+            Dismiss all
+          </button>
+        </div>
+      )}
+
+      <motion.div 
+        layout 
+        className="relative flex flex-col gap-2"
+        style={{ cursor: isExpanded ? 'default' : 'pointer' }}
+        onClick={() => {
+          if (!isExpanded && visible.length > 1) setIsExpanded(true);
+        }}
+      >
+        <AnimatePresence mode="popLayout">
+          {visible.map((n, i) => {
+            if (!isExpanded && i >= 3) return null;
+
+            const Icon = TYPE_ICON[n.type] || Bell;
+            const colorClass = TYPE_COLOR[n.type] || '';
+            const isStacked = !isExpanded && i > 0;
+
+            return (
+              <motion.div
+                layout
+                key={n.id}
+                initial={{ opacity: 0, y: -20, scale: 0.9 }}
+                animate={{
+                  opacity: 1,
+                  y: isExpanded ? 0 : i * 10,
+                  scale: isExpanded ? 1 : 1 - i * 0.05,
+                  zIndex: 50 - i
+                }}
+                exit={{ opacity: 0, scale: 0.8 }}
+                transition={{ type: 'spring', stiffness: 400, damping: 30 }}
+                style={{
+                  position: isStacked ? 'absolute' : 'relative',
+                  top: 0,
+                  left: 0,
+                  right: 0,
+                  transformOrigin: 'top center',
+                }}
+                className={cn(
+                  'rounded-xl border px-4 py-2.5 flex items-center gap-3 shadow-sm hover:shadow-md cursor-pointer bg-white',
+                  colorClass
+                )}
+                onClick={(e) => {
+                  if (!isExpanded && visible.length > 1) {
+                    e.stopPropagation();
+                    setIsExpanded(true);
+                  } else {
+                    handleAction(n);
+                  }
+                }}
+                role="alert"
+              >
+                <div className="flex size-8 shrink-0 items-center justify-center rounded-lg bg-white/60">
+                  <Icon className="size-4" />
+                </div>
+                <div className="flex-1 min-w-0">
+                  <p className="text-xs font-medium truncate">{n.message}</p>
+                </div>
+                <button
+                  type="button"
+                  className="shrink-0 p-1 rounded-md hover:bg-black/5 transition-colors"
+                  onClick={(e) => { e.stopPropagation(); handleDismiss(n.id); }}
+                  aria-label="Dismiss"
+                >
+                  <X className="size-3.5" />
+                </button>
+              </motion.div>
+            );
+          })}
+        </AnimatePresence>
+      </motion.div>
+
+      {isExpanded && visible.length > 1 && (
+        <motion.button 
+          initial={{ opacity: 0 }}
+          animate={{ opacity: 1 }}
+          className="text-[10px] font-medium text-slate-400 hover:text-slate-600 w-full text-center mt-3"
+          onClick={(e) => { e.stopPropagation(); setIsExpanded(false); }}
+        >
+          Show less
+        </motion.button>
+      )}
+    </motion.div>
   );
 }

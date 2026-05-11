@@ -1,8 +1,9 @@
 "use client";
 
-import { useVaultStore, useAutoLock } from '@/lib/store/vaultStore';
+import { useVaultStore, useAutoLock, readKeepVaultUnlockedInTab } from '@/lib/store/vaultStore';
 import { VaultUnlock } from '@/components/vault/VaultUnlock';
 import { useEffect } from 'react';
+import { toast } from 'sonner';
 
 export function VaultClientWrapper({ children }: { children: React.ReactNode }) {
   const isUnlocked = useVaultStore((s) => s.isUnlocked);
@@ -12,14 +13,28 @@ export function VaultClientWrapper({ children }: { children: React.ReactNode }) 
   
   useEffect(() => {
     const handleVisibility = () => {
-      // Lock vault when document becomes hidden
-      if (document.hidden) {
+      if (document.hidden && !readKeepVaultUnlockedInTab()) {
         lock();
       }
     };
     window.addEventListener('visibilitychange', handleVisibility);
     return () => window.removeEventListener('visibilitychange', handleVisibility);
   }, [lock]);
+
+  useEffect(() => {
+    if (!isUnlocked) return;
+
+    const handleKeyDown = (event: KeyboardEvent) => {
+      const isShortcut = (event.ctrlKey || event.metaKey) && event.key.toLowerCase() === 'l';
+      if (!isShortcut) return;
+      event.preventDefault();
+      lock();
+      toast.success('Vault locked');
+    };
+
+    window.addEventListener('keydown', handleKeyDown);
+    return () => window.removeEventListener('keydown', handleKeyDown);
+  }, [isUnlocked, lock]);
 
   return (
     <>
