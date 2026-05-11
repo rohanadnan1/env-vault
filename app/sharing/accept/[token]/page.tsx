@@ -172,15 +172,16 @@ export default function SharingAcceptPage({ params }: { params: Promise<{ token:
   if (error || !inviteData) {
     const isExpired = error?.status === 'EXPIRED';
     const isRevoked = error?.status === 'REVOKED';
+    const isLeft = error?.status === 'LEFT';
     return (
       <div className="min-h-screen flex items-center justify-center bg-slate-50 p-6">
         <Card className="max-w-md w-full border-none shadow-xl text-center p-8 rounded-3xl">
           <div className="h-2 w-full bg-rose-500 absolute top-0 left-0 rounded-t-3xl" />
           <div className="w-20 h-20 bg-rose-50 rounded-full flex items-center justify-center mx-auto mb-6 mt-2">
-            {isExpired ? <Clock className="w-10 h-10 text-rose-500" /> : isRevoked ? <ShieldAlert className="w-10 h-10 text-rose-500" /> : <ShieldAlert className="w-10 h-10 text-rose-500" />}
+            {isExpired ? <Clock className="w-10 h-10 text-rose-500" /> : isRevoked || isLeft ? <ShieldAlert className="w-10 h-10 text-rose-500" /> : <ShieldAlert className="w-10 h-10 text-rose-500" />}
           </div>
           <CardTitle className="text-2xl font-bold text-slate-900 mb-2">
-            {isExpired ? 'Link Expired' : isRevoked ? 'Access Revoked' : 'Invitation Unavailable'}
+            {isExpired ? 'Link Expired' : isRevoked ? 'Access Revoked' : isLeft ? 'Share Ended' : 'Invitation Unavailable'}
           </CardTitle>
           <CardDescription className="text-slate-500 mb-8">{error?.message}</CardDescription>
           <Link href="/">

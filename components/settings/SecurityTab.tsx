@@ -49,11 +49,18 @@ import {
   clearBiometricEnrollment,
 } from "@/lib/crypto/biometric";
 import { useVaultStore } from "@/lib/store/vaultStore";
+import {
+  VAULT_AUTOLOCK_KEY,
+  readKeepVaultUnlockedInTab,
+  writeKeepVaultUnlockedInTab,
+} from "@/lib/store/vaultStore";
 import { useSession } from "next-auth/react";
 import { Input } from "@/components/ui/input";
+import { Switch } from "@/components/ui/switch";
 
 export function SecurityTab() {
   const [autoLock, setAutoLock] = useState("15");
+  const [keepUnlockedInTab, setKeepUnlockedInTab] = useState(false);
   const [is2FAEnabled, setIs2FAEnabled] = useState(false);
   const [isSettingUp2FA, setIsSettingUp2FA] = useState(false);
   const [isRevoking2FA, setIsRevoking2FA] = useState(false);
@@ -145,8 +152,9 @@ export function SecurityTab() {
     const fetchStatus = async () => {
       try {
         // Load auto-lock
-        const saved = localStorage.getItem("envault_autolock");
+        const saved = localStorage.getItem(VAULT_AUTOLOCK_KEY);
         if (saved) setAutoLock(saved);
+        setKeepUnlockedInTab(readKeepVaultUnlockedInTab());
 
         const [totpStatusResult, recoveryStatusResult] = await Promise.allSettled([
           fetch("/api/auth/totp/status"),
@@ -181,8 +189,18 @@ export function SecurityTab() {
   const handleAutoLockChange = (value: string | null) => {
     if (!value) return;
     setAutoLock(value);
-    localStorage.setItem("envault_autolock", value);
+    localStorage.setItem(VAULT_AUTOLOCK_KEY, value);
     toast.success(`Auto-lock timeout updated to ${value === '0' ? 'Never' : value + ' minutes'}`);
+  };
+
+  const handleKeepUnlockedInTabChange = (enabled: boolean) => {
+    setKeepUnlockedInTab(enabled);
+    writeKeepVaultUnlockedInTab(enabled);
+    toast.success(
+      enabled
+        ? 'Auto-lock is disabled for this browser tab until you close or reload it.'
+        : 'Vault auto-lock is active again for this tab.'
+    );
   };
 
   const handleRevoke2FA = async () => {
@@ -254,6 +272,23 @@ export function SecurityTab() {
                 <SelectItem value="0">Never (Unsafe)</SelectItem>
               </SelectContent>
             </Select>
+          </div>
+
+          <div className="flex items-start justify-between gap-4 rounded-2xl border border-slate-200 bg-slate-50/60 px-4 py-4">
+            <div className="space-y-1">
+              <Label className="text-base">Keep Unlocked In This Tab</Label>
+              <p className="text-sm text-slate-500">
+                Disable inactivity and tab-switch auto-lock only for the current browser tab. Closing or reloading the tab still clears the unlocked vault.
+              </p>
+              <p className="text-xs text-slate-400">
+                Shortcut: <span className="font-semibold text-slate-600">Ctrl + L</span> or <span className="font-semibold text-slate-600">Cmd + L</span> locks the vault immediately.
+              </p>
+            </div>
+            <Switch
+              checked={keepUnlockedInTab}
+              onCheckedChange={handleKeepUnlockedInTabChange}
+              aria-label="Keep vault unlocked in this tab"
+            />
           </div>
         </CardContent>
       </Card>

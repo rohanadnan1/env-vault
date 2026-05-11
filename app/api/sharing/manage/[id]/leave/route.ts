@@ -1,7 +1,7 @@
 import { NextResponse } from 'next/server';
 import { auth } from '@/lib/auth';
 import { db } from '@/lib/db';
-import { isInvitationRecipientMatch } from '@/lib/sharing-access';
+import { isInvitationRecipientMatch, isShareInvitationExpired } from '@/lib/sharing-access';
 
 export async function POST(
   _req: Request,
@@ -20,13 +20,27 @@ export async function POST(
     const isRecipient = isInvitationRecipientMatch(invitation, session);
     if (!isRecipient) return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
 
+    if (invitation.status === 'LEFT') {
+      return NextResponse.json({ error: 'You already left this share' }, { status: 400 });
+    }
+
     if (invitation.status === 'REVOKED') {
       return NextResponse.json({ error: 'Already removed' }, { status: 400 });
     }
 
+    if (isShareInvitationExpired(invitation)) {
+      if (invitation.status !== 'EXPIRED') {
+        await db.shareInvitation.update({
+          where: { id },
+          data: { status: 'EXPIRED' },
+        });
+      }
+      return NextResponse.json({ error: 'This share has already expired' }, { status: 410 });
+    }
+
     await db.shareInvitation.update({
       where: { id },
-      data: { status: 'REVOKED', revokedAt: new Date() },
+      data: { status: 'LEFT' },
     });
 
     return NextResponse.json({ success: true });

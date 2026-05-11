@@ -3,7 +3,12 @@ import { auth } from '@/lib/auth';
 import { db } from '@/lib/db';
 import { z } from 'zod';
 import { CreateShareCommentSchema } from '@/lib/validations/schemas';
-import { isInvitationRecipientMatch } from '@/lib/sharing-access';
+import {
+  canRecipientUseAcceptedShare,
+  isInvitationRecipientMatch,
+  isShareInvitationEnded,
+  isShareInvitationExpired,
+} from '@/lib/sharing-access';
 
 export async function POST(req: Request) {
   const session = await auth();
@@ -23,11 +28,14 @@ export async function POST(req: Request) {
     if (!isOwner && !isRecipient) {
       return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
     }
+    if (isShareInvitationEnded(invitation.status) || isShareInvitationExpired(invitation)) {
+      return NextResponse.json({ error: 'Invitation is not active' }, { status: 410 });
+    }
+    if (!isOwner && !canRecipientUseAcceptedShare(invitation, session)) {
+      return NextResponse.json({ error: 'Accept the invitation before commenting' }, { status: 409 });
+    }
     if (invitation.permission === 'READ_ONLY' && !isOwner) {
       return NextResponse.json({ error: 'Read-only access cannot leave comments' }, { status: 403 });
-    }
-    if (invitation.status === 'REVOKED' || invitation.status === 'EXPIRED') {
-      return NextResponse.json({ error: 'Invitation is not active' }, { status: 410 });
     }
 
     const comment = await db.shareComment.create({

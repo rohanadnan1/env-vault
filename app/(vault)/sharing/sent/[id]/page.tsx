@@ -221,7 +221,7 @@ export default function SentInvitationDetailPage() {
             {resourceLabel(data.resourceType)}
           </Badge>
           <Badge variant="outline" className={cn('text-xs', data.status === 'PENDING' ? 'bg-amber-100 text-amber-700 border-amber-200' : data.status === 'ACCEPTED' ? 'bg-emerald-100 text-emerald-700 border-emerald-200' : 'bg-slate-100 text-slate-500 border-slate-200')}>
-            {data.status === 'ACCEPTED' ? 'Accepted' : data.status === 'PENDING' ? 'Pending' : data.status === 'REVOKED' ? 'Revoked' : data.status}
+            {data.status === 'ACCEPTED' ? 'Accepted' : data.status === 'PENDING' ? 'Pending' : data.status === 'REVOKED' ? 'Revoked' : data.status === 'LEFT' ? 'Left' : data.status}
           </Badge>
           <Badge variant="outline" className="text-xs border-slate-200 text-slate-600">
             {data.permission === 'READ_ONLY' ? 'Read only' : data.permission === 'COMMENT' ? 'Comment' : 'Edit'}

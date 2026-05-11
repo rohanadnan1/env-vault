@@ -8,20 +8,25 @@ import {
   FileCheck,
   Activity,
   Clock,
-  ShieldAlert,
-  XCircle,
-  RotateCcw,
-  CheckCircle2,
-  Eye,
-  FileText,
-  Key,
-  Package,
-  FolderKanban,
-  Container,
-  FolderOpen,
+  Calendar,
   Users,
   UserPlus,
-  Calendar,
+  Eye,
+  EyeOff,
+  Timer,
+  CheckCircle2,
+  XCircle,
+  FolderKanban,
+  FileText,
+  FolderOpen,
+  Container,
+  Key,
+  AlertTriangle,
+  ShieldAlert,
+  Loader2,
+  Package,
+  MessageSquare,
+  ChevronRight,
   RefreshCw,
 } from 'lucide-react';
 import { Tabs, TabsList, TabsTrigger, TabsContent } from '@/components/ui/tabs';
@@ -33,6 +38,8 @@ import { Label } from '@/components/ui/label';
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle, DialogFooter } from '@/components/ui/dialog';
 import { toast } from 'sonner';
 import { cn } from '@/lib/utils';
+import { useApi } from '@/lib/swr-config';
+import { ListSkeleton, StaggerList, StaggerItem, FadeIn } from '@/components/ui/animations';
 
 interface InvitationData {
   id: string;
@@ -128,6 +135,7 @@ function statusBadge(status: string) {
   switch (status) {
     case 'ACCEPTED': return { label: 'Accepted', className: 'bg-emerald-100 text-emerald-700 border-emerald-200' };
     case 'PENDING': return { label: 'Pending', className: 'bg-amber-100 text-amber-700 border-amber-200' };
+    case 'LEFT': return { label: 'Left', className: 'bg-slate-100 text-slate-500 border-slate-200' };
     case 'REVOKED': return { label: 'Revoked', className: 'bg-rose-100 text-rose-700 border-rose-200' };
     case 'EXPIRED': return { label: 'Expired', className: 'bg-slate-100 text-slate-500 border-slate-200' };
     default: return { label: status, className: 'bg-slate-100 text-slate-500 border-slate-200' };
@@ -480,9 +488,7 @@ export function SharingPageContent({ userId, userName, defaultTab }: { userId: s
         {/* ── Sent Tab ──────────────────────────────────────────────── */}
         <TabsContent value="sent">
           {sentLoading ? (
-            <div className="flex items-center justify-center py-24">
-              <div className="w-8 h-8 border-4 border-indigo-600/20 border-t-indigo-600 rounded-full animate-spin" />
-            </div>
+            <ListSkeleton rows={4} />
           ) : sent.length === 0 ? (
             <div className="flex flex-col items-center justify-center py-24 border-2 border-dashed border-slate-200 rounded-2xl bg-slate-50/50">
               <div className="w-16 h-16 bg-white rounded-2xl shadow-sm border border-slate-100 flex items-center justify-center mb-4">
@@ -494,12 +500,13 @@ export function SharingPageContent({ userId, userName, defaultTab }: { userId: s
               </p>
             </div>
           ) : (
-              <div className="space-y-4">
+            <StaggerList className="space-y-4">
               {sent.map(inv => {
                 const status = statusBadge(inv.status);
                 const perm = permissionBadge(inv.permission);
                 const ttl = ttlInfo(inv.expiresAt);
                 return (
+                  <StaggerItem key={inv.id}>
                   <Card
                     key={inv.id}
                     className="overflow-hidden border-slate-200 shadow-sm rounded-2xl cursor-pointer hover:border-indigo-300 hover:shadow-md transition-all"
@@ -602,18 +609,17 @@ export function SharingPageContent({ userId, userName, defaultTab }: { userId: s
                       </div>
                     </div>
                   </Card>
+                  </StaggerItem>
                 );
               })}
-            </div>
+            </StaggerList>
           )}
         </TabsContent>
 
         {/* ── Received Tab ──────────────────────────────────────────── */}
         <TabsContent value="received">
           {receivedLoading ? (
-            <div className="flex items-center justify-center py-24">
-              <div className="w-8 h-8 border-4 border-indigo-600/20 border-t-indigo-600 rounded-full animate-spin" />
-            </div>
+            <ListSkeleton rows={4} />
           ) : received.length === 0 ? (
             <div className="flex flex-col items-center justify-center py-24 border-2 border-dashed border-slate-200 rounded-2xl bg-slate-50/50">
               <div className="w-16 h-16 bg-white rounded-2xl shadow-sm border border-slate-100 flex items-center justify-center mb-4">
@@ -634,7 +640,7 @@ export function SharingPageContent({ userId, userName, defaultTab }: { userId: s
                   <Card
                     key={inv.id}
                     className="overflow-hidden border-slate-200 shadow-sm hover:shadow-md transition-shadow rounded-2xl cursor-pointer"
-                    onClick={() => router.push(`/shared/${inv.id}`)}
+                    onClick={() => router.push(inv.status === 'PENDING' ? `/sharing/accept/${inv.inviteToken}` : `/shared/${inv.id}`)}
                   >
                     <div className="flex flex-col md:flex-row divide-y md:divide-y-0 md:divide-x divide-slate-100">
                       <div className="flex-1 p-5">
@@ -676,6 +682,12 @@ export function SharingPageContent({ userId, userName, defaultTab }: { userId: s
                               Accepted
                             </span>
                           )}
+                          {inv.status === 'PENDING' && (
+                            <span className="flex items-center gap-1.5 text-amber-600">
+                              <Clock className="w-3.5 h-3.5" />
+                              Acceptance required
+                            </span>
+                          )}
                         </div>
                       </div>
                     </div>
@@ -689,9 +701,7 @@ export function SharingPageContent({ userId, userName, defaultTab }: { userId: s
         {/* ── Reviews Tab ───────────────────────────────────────────── */}
         <TabsContent value="reviews">
           {reviewsLoading ? (
-            <div className="flex items-center justify-center py-24">
-              <div className="w-8 h-8 border-4 border-indigo-600/20 border-t-indigo-600 rounded-full animate-spin" />
-            </div>
+            <ListSkeleton rows={3} />
           ) : editRequests.length === 0 ? (
             <div className="flex flex-col items-center justify-center py-24 border-2 border-dashed border-slate-200 rounded-2xl bg-slate-50/50">
               <div className="w-16 h-16 bg-white rounded-2xl shadow-sm border border-slate-100 flex items-center justify-center mb-4">

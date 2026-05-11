@@ -1,6 +1,26 @@
 import { create } from 'zustand';
 import { useEffect } from 'react';
 
+export const VAULT_AUTOLOCK_KEY = 'envault_autolock';
+export const VAULT_KEEP_UNLOCKED_IN_TAB_KEY = 'envault_keep_unlocked_in_tab';
+
+export function readVaultAutoLockMinutes() {
+  if (typeof window === 'undefined') return 15;
+  const saved = window.localStorage.getItem(VAULT_AUTOLOCK_KEY);
+  const parsed = saved ? parseInt(saved, 10) : 15;
+  return Number.isFinite(parsed) ? parsed : 15;
+}
+
+export function readKeepVaultUnlockedInTab() {
+  if (typeof window === 'undefined') return false;
+  return window.sessionStorage.getItem(VAULT_KEEP_UNLOCKED_IN_TAB_KEY) === 'true';
+}
+
+export function writeKeepVaultUnlockedInTab(enabled: boolean) {
+  if (typeof window === 'undefined') return;
+  window.sessionStorage.setItem(VAULT_KEEP_UNLOCKED_IN_TAB_KEY, enabled ? 'true' : 'false');
+}
+
 interface VaultStore {
   derivedKey: CryptoKey | null;
   isUnlocked: boolean;
@@ -35,10 +55,10 @@ export function useAutoLock() {
   useEffect(() => {
     if (!isUnlocked) return;
 
-    // Read timeout from localStorage (minutes)
-    const saved = localStorage.getItem("envault_autolock");
-    const timeoutMins = saved ? parseInt(saved, 10) : 15;
-    
+    if (readKeepVaultUnlockedInTab()) return;
+
+    const timeoutMins = readVaultAutoLockMinutes();
+
     // 0 means "Never"
     if (timeoutMins === 0) return;
 

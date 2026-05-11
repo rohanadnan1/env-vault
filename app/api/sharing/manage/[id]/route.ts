@@ -42,9 +42,14 @@ export async function GET(
     if (!invitation) return NextResponse.json({ error: 'Invitation not found' }, { status: 404 });
 
     const { shareEncryptionSalt, encryptedShareKey, shareKeyIv, bundleEncrypted, bundleIv, ...safeInv } = invitation;
+    const effectiveStatus =
+      invitation.status !== 'EXPIRED' && invitation.expiresAt && invitation.expiresAt < new Date()
+        ? 'EXPIRED'
+        : invitation.status;
 
     return NextResponse.json({
       ...safeInv,
+      status: effectiveStatus,
       expiresAt: (invitation.expiresAt as Date | null)?.toISOString() || null,
       createdAt: invitation.createdAt.toISOString(),
       updatedAt: invitation.updatedAt.toISOString(),
@@ -104,6 +109,16 @@ export async function PATCH(
       where: { id, ownerId: session.user.id }
     });
     if (!invitation) return NextResponse.json({ error: 'Invitation not found' }, { status: 404 });
+    if (invitation.status === 'REVOKED' || invitation.status === 'LEFT' || invitation.status === 'EXPIRED') {
+      return NextResponse.json({ error: 'Only active invitations can be updated' }, { status: 409 });
+    }
+    if (invitation.expiresAt && invitation.expiresAt < new Date()) {
+      await db.shareInvitation.update({
+        where: { id },
+        data: { status: 'EXPIRED' },
+      });
+      return NextResponse.json({ error: 'This invitation has already expired' }, { status: 410 });
+    }
 
     const body = await req.json();
     const data = UpdateShareInvitationSchema.parse(body);

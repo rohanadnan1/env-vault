@@ -29,8 +29,12 @@ export async function GET(
       return NextResponse.json({ error: 'This share has been revoked by the owner', status: 'REVOKED' }, { status: 410 });
     }
 
+    if (invitation.status === 'LEFT') {
+      return NextResponse.json({ error: 'This share was left and must be shared again by the owner', status: 'LEFT' }, { status: 410 });
+    }
+
     if (invitation.status === 'EXPIRED' || (invitation.expiresAt && new Date(invitation.expiresAt) < new Date())) {
-      if (invitation.status === 'PENDING') {
+      if (invitation.status !== 'EXPIRED') {
         await db.shareInvitation.update({
           where: { id: invitation.id },
           data: { status: 'EXPIRED' }

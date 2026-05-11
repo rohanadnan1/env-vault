@@ -4,12 +4,14 @@ const globalForPrisma = globalThis as unknown as { prisma: PrismaClient };
 const isProduction = process.env.NODE_ENV === "production";
 
 function getDatabaseUrl() {
-  const raw = process.env.DATABASE_URL;
+  const isServerlessProd = process.env.VERCEL === '1' || process.env.NODE_ENV === 'production';
+  const raw = isServerlessProd
+    ? process.env.DATABASE_URL
+    : process.env.DIRECT_URL || process.env.DATABASE_URL;
   if (!raw) return raw;
 
   try {
     const url = new URL(raw);
-    const isServerlessProd = process.env.VERCEL === '1' || process.env.NODE_ENV === 'production';
 
     if (!url.searchParams.has('connect_timeout')) {
       url.searchParams.set('connect_timeout', '5');

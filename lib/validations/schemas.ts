@@ -12,6 +12,114 @@ export const CreateEnvironmentSchema = z.object({
   projectId: z.string().cuid(),
 });
 
+export const CreatePrivateSpaceSchema = z.object({
+  name: z.string().min(1).max(80),
+  encryptedSpaceKey: z.string().min(1),
+  encryptedSpaceKeyAlgorithm: z.string().min(1).max(100).default('RSA-OAEP-256'),
+  vaultPublicKey: z.string().min(1).optional(),
+  vaultPublicKeyAlgorithm: z.string().min(1).max(100).optional(),
+});
+
+export const InviteToPrivateSpaceSchema = z.object({
+  recipientEmail: z.string().email('Invalid email address'),
+  encryptedSpaceKey: z.string().min(1).optional(),
+  encryptedSpaceKeyAlgorithm: z.string().min(1).max(100).optional(),
+  expiresAt: z.string().datetime().optional().nullable(),
+});
+
+export const RefreshPrivateSpaceInvitationKeySchema = z.object({
+  encryptedSpaceKey: z.string().min(1),
+  encryptedSpaceKeyAlgorithm: z.string().min(1).max(100).default('RSA-OAEP-256'),
+});
+
+export const UpsertVaultPublicKeySchema = z.object({
+  vaultPublicKey: z.string().min(1),
+  vaultPublicKeyAlgorithm: z.string().min(1).max(100).default('RSA-OAEP-256'),
+});
+
+export const CreatePrivateSpaceFileSchema = z.object({
+  name: z.string().min(1).max(255),
+  contentEncrypted: z.string().min(1),
+  iv: z.string().min(1),
+  folderPath: z.string().min(1).max(500).default('/'),
+  mimeType: z.string().optional().default('text/plain'),
+});
+
+export const CreatePrivateSpaceUserFileSchema = z.object({
+  kingFileId: z.string().cuid().optional().nullable(),
+  name: z.string().min(1).max(255).optional(),
+  contentEncrypted: z.string().min(1).optional(),
+  iv: z.string().min(1).optional(),
+  folderPath: z.string().min(1).max(500).default('/'),
+}).superRefine((value, ctx) => {
+  if (!value.kingFileId) {
+    if (!value.name) ctx.addIssue({ code: z.ZodIssueCode.custom, message: 'File name is required.', path: ['name'] });
+    if (!value.contentEncrypted) ctx.addIssue({ code: z.ZodIssueCode.custom, message: 'Encrypted content is required.', path: ['contentEncrypted'] });
+    if (!value.iv) ctx.addIssue({ code: z.ZodIssueCode.custom, message: 'IV is required.', path: ['iv'] });
+  }
+});
+
+export const UpdatePrivateSpaceUserFileSchema = z.object({
+  name: z.string().min(1).max(255).optional(),
+  contentEncrypted: z.string().min(1).optional(),
+  iv: z.string().min(1).optional(),
+  folderPath: z.string().min(1).max(500).optional(),
+});
+
+export const CreatePrivateSpaceSecretSchema = z.object({
+  keyName: z.string().regex(/^[A-Za-z0-9_]+$/, 'Only letters, numbers, and underscores').max(200),
+  valueEncrypted: z.string().min(1),
+  iv: z.string().min(1),
+});
+
+export const CreatePrivateSpaceUserSecretSchema = z.object({
+  kingSecretId: z.string().cuid().optional().nullable(),
+  keyName: z.string().regex(/^[A-Za-z0-9_]+$/, 'Only letters, numbers, and underscores').max(200).optional(),
+  valueEncrypted: z.string().min(1).optional(),
+  iv: z.string().min(1).optional(),
+  folderPath: z.string().min(1).max(500).default('/'),
+}).superRefine((value, ctx) => {
+  if (!value.kingSecretId) {
+    if (!value.keyName) ctx.addIssue({ code: z.ZodIssueCode.custom, message: 'Secret key name is required.', path: ['keyName'] });
+    if (!value.valueEncrypted) ctx.addIssue({ code: z.ZodIssueCode.custom, message: 'Encrypted secret value is required.', path: ['valueEncrypted'] });
+    if (!value.iv) ctx.addIssue({ code: z.ZodIssueCode.custom, message: 'IV is required.', path: ['iv'] });
+  }
+});
+
+export const UpdatePrivateSpaceUserSecretSchema = z.object({
+  valueEncrypted: z.string().min(1),
+  iv: z.string().min(1),
+  folderPath: z.string().min(1).max(500).optional(),
+});
+
+export const CreatePrivateSpaceMergeRequestSchema = z.object({
+  resourceType: z.enum(['FILE', 'SECRET']),
+  kingResourceId: z.string().cuid().optional().nullable(),
+  proposedData: z.string().min(1),
+  iv: z.string().min(1),
+  proposedName: z.string().min(1).max(255).optional(),
+  proposedFolderPath: z.string().min(1).max(500).optional(),
+  replacePending: z.boolean().optional().default(false),
+});
+
+export const CreatePrivateSpaceFolderSchema = z.object({
+  visibility: z.enum(['PERSONAL', 'KING']),
+  domain: z.enum(['FILE', 'SECRET']),
+  name: z.string().min(1).max(100),
+  parentPath: z.string().min(1).max(500).default('/'),
+});
+
+export const ReviewPrivateSpaceMergeRequestSchema = z.object({
+  action: z.enum(['APPROVE', 'REJECT']),
+  preserveFolderStructure: z.boolean().optional().default(false),
+});
+
+export const VotePrivateSpaceElectionSchema = z.object({
+  candidate1Id: z.string().cuid(),
+  candidate2Id: z.string().cuid(),
+  candidate3Id: z.string().cuid(),
+});
+
 export const CreateFolderSchema = z.object({
   name: z.string().min(1).max(100),
   environmentId: z.string().cuid(),
@@ -68,7 +176,7 @@ export const ShareVersionModeEnum = z.enum([
 ]);
 
 export const InviteStatusEnum = z.enum([
-  'PENDING', 'ACCEPTED', 'REVOKED', 'EXPIRED'
+  'PENDING', 'ACCEPTED', 'LEFT', 'REVOKED', 'EXPIRED'
 ]);
 
 export const EditRequestStatusEnum = z.enum([

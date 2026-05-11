@@ -1,7 +1,11 @@
 import { NextResponse } from 'next/server';
 import { auth } from '@/lib/auth';
 import { db } from '@/lib/db';
-import { isInvitationRecipientMatch } from '@/lib/sharing-access';
+import {
+  canRecipientUseAcceptedShare,
+  isInvitationRecipientMatch,
+  isShareInvitationExpired,
+} from '@/lib/sharing-access';
 
 export async function GET(
   req: Request,
@@ -27,11 +31,19 @@ export async function GET(
       return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
     }
 
+    if (!isOwner && invitation.status === 'PENDING') {
+      return NextResponse.json({ error: 'Invitation must be accepted before this resource can be opened' }, { status: 409 });
+    }
+
+    if (!isOwner && invitation.status === 'LEFT') {
+      return NextResponse.json({ error: 'You left this shared resource. The owner must share it again.' }, { status: 410 });
+    }
+
     if (invitation.status === 'REVOKED') {
       return NextResponse.json({ error: 'Access has been revoked' }, { status: 410 });
     }
 
-    if (invitation.status === 'EXPIRED' || (invitation.expiresAt && new Date(invitation.expiresAt) < new Date())) {
+    if (isShareInvitationExpired(invitation)) {
       if (invitation.status !== 'EXPIRED') {
         await db.shareInvitation.update({
           where: { id: invitation.id },
@@ -39,6 +51,10 @@ export async function GET(
         });
       }
       return NextResponse.json({ error: 'Access has expired' }, { status: 410 });
+    }
+
+    if (!isOwner && !canRecipientUseAcceptedShare(invitation, session)) {
+      return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
     }
 
     await db.shareAccessLog.create({
