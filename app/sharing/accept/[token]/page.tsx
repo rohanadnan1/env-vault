@@ -16,6 +16,7 @@ import {
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
+import { PasswordInput } from '@/components/ui/password-input';
 import { Label } from '@/components/ui/label';
 import { Card, CardHeader, CardTitle, CardDescription, CardContent, CardFooter } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
@@ -38,12 +39,16 @@ interface InviteData {
   acceptedAt: string | null;
   note: string | null;
   createdAt: string;
-  owner: { id: string; name: string | null };
+  owner: { id: string; username?: string | null; name: string | null };
   shareEncryptionSalt: string;
   encryptedShareKey: string;
   shareKeyIv: string | null;
   bundleEncrypted: string | null;
   bundleIv: string | null;
+}
+
+function personLabel(person: { username?: string | null; name?: string | null }) {
+  return person.username ? `@${person.username}` : person.name || 'Someone';
 }
 
 function resourceLabel(type: string) {
@@ -213,7 +218,7 @@ export default function SharingAcceptPage({ params }: { params: Promise<{ token:
             {isAccepted ? 'Already Accepted' : 'Shared Resource'}
           </CardTitle>
           <CardDescription>
-            {inviteData.owner.name || 'Someone'} shared a {resourceLabel(inviteData.resourceType).toLowerCase()} with you
+            {personLabel(inviteData.owner)} shared a {resourceLabel(inviteData.resourceType).toLowerCase()} with you
           </CardDescription>
         </CardHeader>
 
@@ -334,9 +339,8 @@ export default function SharingAcceptPage({ params }: { params: Promise<{ token:
                 <Label htmlFor="passphrase">Enter Passphrase</Label>
                 <div className="relative">
                   <Lock className="w-4 h-4 absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" />
-                  <Input
+                  <PasswordInput
                     id="passphrase"
-                    type="password"
                     placeholder="Provided by sender..."
                     className="pl-10 h-12 bg-slate-50/50 border-slate-200 focus:bg-white transition-all rounded-xl"
                     value={passphrase}

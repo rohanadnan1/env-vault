@@ -14,7 +14,7 @@ export default async function PrivateSpaceInvitePage({ params }: { params: Promi
     where: { inviteToken: token },
     include: {
       space: { select: { id: true, name: true, createdAt: true } },
-      inviter: { include: { user: { select: { id: true, name: true, email: true } } } },
+      inviter: { include: { user: { select: { id: true, username: true, name: true, email: true } } } },
     },
   });
 

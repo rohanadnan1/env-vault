@@ -13,6 +13,9 @@ model User {
   email                   String    @unique
   emailVerified           DateTime?
   name                    String?
+  username                String?   @unique
+  usernameSetAt           DateTime?
+  usernameLockedAt        DateTime?
   password                String?
   image                   String?
   createdAt               DateTime  @default(now())
@@ -52,6 +55,8 @@ model User {
   shareComments            ShareComment[]
   spaceMemberships         SpaceMember[]
   receivedSpaceInvitations SpaceInvitation[]  @relation("ReceivedSpaceInvitations")
+  vaultStoredKeys           VaultStoredKey[]
+  vaultStoredRecoveryCodes  VaultStoredRecoveryCode[]
 }
 
 model EmailVerificationCode {
@@ -311,6 +316,7 @@ enum ElectionStatus {
 
 enum SpaceInvitationStatus {
   PENDING
+  PENDING_APPROVAL
   ACCEPTED
   REVOKED
   EXPIRED
@@ -917,4 +923,37 @@ model PeerCloneRequest {
   @@index([spaceId, status])
   @@index([sourceId, status])
   @@index([requesterId])
+}
+
+// ── Vault Keys & Recovery Codes ────────────────────────────────────
+model VaultStoredKey {
+  id          String   @id @default(cuid())
+  userId      String
+  user        User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  spaceId     String?
+  spaceName   String   @default("")
+  keyType     String   @default("PRIVATE_SPACE") // PRIVATE_SPACE, SSH, GPG, etc.
+  publicKey   String   @db.Text
+  privateKey  String?  @db.Text
+  algorithm   String   @default("RSA-OAEP-256")
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  @@index([userId])
+  @@index([userId, spaceId])
+}
+
+model VaultStoredRecoveryCode {
+  id          String    @id @default(cuid())
+  userId      String
+  user        User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  codeOrder   Int
+  codeEncrypted String  @db.Text
+  iv          String
+  isUsed      Boolean   @default(false)
+  usedAt      DateTime?
+  createdAt   DateTime  @default(now())
+
+  @@unique([userId, codeOrder])
+  @@index([userId])
 }

@@ -5,6 +5,7 @@ import { useRouter } from 'next/navigation';
 import Link from 'next/link';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
+import { PasswordInput } from '@/components/ui/password-input';
 import { Label } from '@/components/ui/label';
 import { toast } from 'sonner';
 
@@ -106,9 +107,8 @@ export default function ResetPasswordPage({ params }: { params: Promise<{ token:
       <form onSubmit={onSubmit} className="space-y-4">
         <div className="space-y-2">
           <Label htmlFor="password">New password</Label>
-          <Input
+          <PasswordInput
             id="password"
-            type="password"
             value={password}
             onChange={(event) => setPassword(event.target.value)}
             minLength={8}
@@ -118,9 +118,8 @@ export default function ResetPasswordPage({ params }: { params: Promise<{ token:
         </div>
         <div className="space-y-2">
           <Label htmlFor="confirm">Confirm new password</Label>
-          <Input
+          <PasswordInput
             id="confirm"
-            type="password"
             value={confirm}
             onChange={(event) => setConfirm(event.target.value)}
             minLength={8}

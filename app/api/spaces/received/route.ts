@@ -28,7 +28,7 @@ export async function GET() {
         inviter: {
           include: {
             user: {
-              select: { id: true, email: true, name: true },
+              select: { id: true, username: true, email: true, name: true },
             },
           },
         },

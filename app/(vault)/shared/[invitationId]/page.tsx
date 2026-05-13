@@ -43,6 +43,7 @@ import {
   DialogTitle,
 } from '@/components/ui/dialog';
 import { Input } from '@/components/ui/input';
+import { PasswordInput } from '@/components/ui/password-input';
 import { Label } from '@/components/ui/label';
 import { Textarea } from '@/components/ui/textarea';
 import { toast } from 'sonner';
@@ -63,7 +64,7 @@ interface ResourceData {
   permission: string;
   status: string;
   expiresAt: string | null;
-  owner: { id: string; name: string | null; email: string };
+  owner: { id: string; username?: string | null; name: string | null; email: string };
   project?: { id: string; name: string; emoji: string; color: string } | null;
   secrets?: Array<{ keyName: string; valueEncrypted: string; iv: string }>;
   files?: Array<{ name: string; contentEncrypted: string; iv: string; mimeType: string }>;
@@ -76,7 +77,7 @@ interface InviteMeta {
   permission: string;
   status: string;
   expiresAt: string | null;
-  owner: { id: string; name: string | null; email: string };
+  owner: { id: string; username?: string | null; name: string | null; email: string };
   project?: { id: string; name: string; emoji: string; color: string } | null;
 }
 
@@ -85,8 +86,12 @@ interface CommentData {
   content: string;
   iv: string | null;
   isEncrypted: boolean;
-  author: { id: string; name: string | null };
+  author: { id: string; username?: string | null; name: string | null };
   createdAt: string;
+}
+
+function personLabel(person: { username?: string | null; name?: string | null; email?: string | null }) {
+  return person.username ? `@${person.username}` : person.name || person.email || 'Unknown';
 }
 
 interface EditRequestHistory {
@@ -539,7 +544,7 @@ export default function SharedResourcePage({ params }: { params: Promise<{ invit
       )}>
         <div className="flex flex-wrap items-center gap-2 text-sm text-slate-700">
           <span className="flex items-center gap-1.5">
-            <span className="font-medium">Shared by {inviteMeta?.owner?.name || 'Unknown'}</span>
+            <span className="font-medium">Shared by {inviteMeta?.owner ? personLabel(inviteMeta.owner) : 'Unknown'}</span>
           </span>
           <span className="text-slate-300 hidden sm:inline">·</span>
           <Badge variant="outline" className={cn('text-xs', permissionBadgeClass(inviteMeta?.permission || 'READ_ONLY'))}>
@@ -633,9 +638,8 @@ export default function SharedResourcePage({ params }: { params: Promise<{ invit
             >
               <div className="space-y-2">
                 <Label htmlFor="shared-passphrase">Passphrase</Label>
-                <Input
+                <PasswordInput
                   id="shared-passphrase"
-                  type="password"
                   placeholder="Enter the shared passphrase"
                   value={passphrase}
                   onChange={(event) => {

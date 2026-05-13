@@ -17,7 +17,7 @@ export async function GET() {
         ],
       },
       include: {
-        owner: { select: { id: true, name: true, email: true } },
+        owner: { select: { id: true, username: true, name: true, email: true } },
         project: { select: { id: true, name: true, emoji: true, color: true } },
         _count: { select: { accessLogs: true, comments: true } }
       },

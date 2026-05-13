@@ -20,7 +20,7 @@ export async function GET(_: Request, { params }: { params: Promise<{ token: str
       },
       inviter: {
         include: {
-          user: { select: { id: true, email: true, name: true } },
+          user: { select: { id: true, username: true, email: true, name: true } },
         },
       },
     },

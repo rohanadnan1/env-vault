@@ -1,6 +1,7 @@
 import { NextResponse } from 'next/server';
 import { auth } from '@/lib/auth';
 import { db } from '@/lib/db';
+import { getUserLabel } from '@/lib/username';
 
 interface Notification {
   id: string;
@@ -33,7 +34,7 @@ export async function GET(req: Request) {
           ],
         },
         include: {
-          owner: { select: { name: true, email: true } },
+          owner: { select: { username: true, name: true, email: true } },
         },
         orderBy: { createdAt: 'desc' },
         take: 20,
@@ -43,7 +44,7 @@ export async function GET(req: Request) {
         notifications.push({
           id: `share-${inv.id}`,
           type: 'NEW_SHARE',
-          message: `${inv.owner.name || inv.owner.email} shared a ${inv.resourceType.toLowerCase()} with you`,
+          message: `${getUserLabel(inv.owner)} shared a ${inv.resourceType.toLowerCase()} with you`,
           actionUrl: inv.status === 'PENDING' ? `/sharing/accept/${inv.inviteToken}` : `/shared/${inv.id}`,
           createdAt: inv.createdAt.toISOString(),
         });
@@ -57,7 +58,7 @@ export async function GET(req: Request) {
           invitation: { ownerId: session.user.id },
         },
         include: {
-          requester: { select: { name: true, email: true } },
+          requester: { select: { username: true, name: true, email: true } },
           invitation: { select: { resourceType: true } },
         },
         orderBy: { createdAt: 'desc' },
@@ -69,7 +70,7 @@ export async function GET(req: Request) {
           notifications.push({
             id: `review-req-${er.id}`,
             type: 'REVIEW_REQUESTED',
-            message: `${er.requester.name || er.requester.email} submitted a review on ${er.invitation.resourceType.toLowerCase()}: ${er.title}`,
+            message: `${getUserLabel(er.requester)} submitted a review on ${er.invitation.resourceType.toLowerCase()}: ${er.title}`,
             actionUrl: `/sharing/reviews/${er.id}`,
             createdAt: er.createdAt.toISOString(),
           });
@@ -88,7 +89,7 @@ export async function GET(req: Request) {
           invitation: {
             select: {
               resourceType: true,
-              owner: { select: { name: true, email: true } },
+              owner: { select: { username: true, name: true, email: true } },
             },
           },
         },
@@ -101,7 +102,7 @@ export async function GET(req: Request) {
         notifications.push({
           id: `review-out-${er.id}`,
           type: 'REVIEW_UPDATED',
-          message: `${er.invitation.owner.name || er.invitation.owner.email} ${statusLabel} your edit: ${er.title}`,
+          message: `${getUserLabel(er.invitation.owner)} ${statusLabel} your edit: ${er.title}`,
           actionUrl: `/shared/${er.invitationId}`,
           createdAt: er.updatedAt.toISOString(),
         });
@@ -122,7 +123,7 @@ export async function GET(req: Request) {
           },
         },
         include: {
-          author: { select: { name: true, email: true } },
+          author: { select: { username: true, name: true, email: true } },
           invitation: { select: { resourceType: true, ownerId: true, recipientId: true } },
         },
         orderBy: { createdAt: 'desc' },
@@ -134,7 +135,7 @@ export async function GET(req: Request) {
         notifications.push({
           id: `comment-${c.id}`,
           type: 'NEW_COMMENT',
-          message: `${c.author.name || c.author.email} commented on a shared ${c.invitation.resourceType.toLowerCase()}`,
+          message: `${getUserLabel(c.author)} commented on a shared ${c.invitation.resourceType.toLowerCase()}`,
           actionUrl: isOwner ? `/sharing/sent/${c.invitationId}` : `/shared/${c.invitationId}`,
           createdAt: c.createdAt.toISOString(),
         });

@@ -1,5 +1,6 @@
 "use client";
 
+import Image from "next/image";
 import { useSession, signOut } from "next-auth/react";
 import { useRouter } from "next/navigation";
 import { 
@@ -18,6 +19,9 @@ import {
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
 import { useVaultStore } from "@/lib/store/vaultStore";
+import { isEmojiAvatar, parseAvatar3DConfig, parseAvatarConfig } from "@/lib/avatars";
+import { AvatarRenderer } from "@/components/ui/avatar-renderer";
+import { Avatar3D } from "@/components/ui/avatar-3d";
 
 export function UserMenu() {
   const { data: session } = useSession();
@@ -28,6 +32,10 @@ export function UserMenu() {
   if (!session?.user) return null;
 
   const user = session.user;
+  const avatarValue = user.image ?? null;
+  const showEmojiAvatar = avatarValue ? isEmojiAvatar(avatarValue) : false;
+  const customAvatar = avatarValue ? parseAvatarConfig(avatarValue) : null;
+  const custom3DAvatar = avatarValue ? parseAvatar3DConfig(avatarValue) : null;
   const initial = user.name 
     ? user.name.charAt(0).toUpperCase() 
     : user.email?.charAt(0).toUpperCase() || "?";
@@ -36,8 +44,28 @@ export function UserMenu() {
     <DropdownMenu>
       <DropdownMenuTrigger
         render={
-          <button className="w-9 h-9 rounded-full bg-gradient-to-br from-indigo-500 to-purple-600 flex items-center justify-center text-white font-bold border-2 border-white shadow-md cursor-pointer hover:scale-105 transition-all ring-1 ring-slate-200 outline-none">
-            {initial}
+          <button className="relative w-9 h-9 rounded-full bg-gradient-to-br from-indigo-500 to-purple-600 flex items-center justify-center text-white font-bold border-2 border-white shadow-md cursor-pointer hover:scale-105 transition-all ring-1 ring-slate-200 outline-none overflow-hidden">
+            {avatarValue ? (
+              custom3DAvatar ? (
+                <Avatar3D config={custom3DAvatar} className="w-full h-full" />
+              ) : customAvatar ? (
+                <AvatarRenderer config={customAvatar} className="w-full h-full" />
+              ) : showEmojiAvatar ? (
+                <span className="text-lg" aria-hidden>
+                  {avatarValue}
+                </span>
+              ) : (
+                <Image
+                  src={avatarValue}
+                  alt={user.name ? `${user.name} avatar` : "User avatar"}
+                  fill
+                  sizes="36px"
+                  className="object-cover"
+                />
+              )
+            ) : (
+              initial
+            )}
           </button>
         }
       />

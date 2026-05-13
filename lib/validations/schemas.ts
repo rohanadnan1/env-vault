@@ -109,6 +109,26 @@ export const CreatePrivateSpaceFolderSchema = z.object({
   parentPath: z.string().min(1).max(500).default('/'),
 });
 
+export const ImportProjectIntoPrivateSpaceSchema = z.object({
+  projectId: z.string().cuid(),
+  projectName: z.string().min(1).max(255),
+  rootFolderPath: z.string().min(1).max(500),
+  fileFolders: z.array(z.string().min(1).max(500)).default([]),
+  secretFolders: z.array(z.string().min(1).max(500)).default([]),
+  files: z.array(z.object({
+    name: z.string().min(1).max(255),
+    folderPath: z.string().min(1).max(500),
+    contentEncrypted: z.string().min(1),
+    iv: z.string().min(1),
+  })).default([]),
+  secrets: z.array(z.object({
+    keyName: z.string().regex(/^[A-Za-z0-9_]+$/, 'Only letters, numbers, and underscores').max(200),
+    folderPath: z.string().min(1).max(500),
+    valueEncrypted: z.string().min(1),
+    iv: z.string().min(1),
+  })).default([]),
+});
+
 export const ReviewPrivateSpaceMergeRequestSchema = z.object({
   action: z.enum(['APPROVE', 'REJECT']),
   preserveFolderStructure: z.boolean().optional().default(false),

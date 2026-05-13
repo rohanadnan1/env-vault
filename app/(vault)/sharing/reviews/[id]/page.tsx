@@ -34,6 +34,7 @@ import {
   DialogTitle,
 } from '@/components/ui/dialog';
 import { Input } from '@/components/ui/input';
+import { PasswordInput } from '@/components/ui/password-input';
 import { Label } from '@/components/ui/label';
 import { Textarea } from '@/components/ui/textarea';
 import { SharePermissionBadge } from '@/components/sharing/SharePermissionBadge';
@@ -468,9 +469,8 @@ export default function ReviewDetailPage() {
               <div className="grid gap-4 md:grid-cols-[1fr_auto] md:items-end">
                 <div className="space-y-2">
                   <Label htmlFor="share-passphrase">Shared passphrase</Label>
-                  <Input
+                  <PasswordInput
                     id="share-passphrase"
-                    type="password"
                     value={sharePassphrase}
                     onChange={(e) => setSharePassphrase(e.target.value)}
                     placeholder="Enter the passphrase used for this share"

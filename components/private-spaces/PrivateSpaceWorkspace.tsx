@@ -1,6 +1,6 @@
 "use client";
 
-import { diffLines } from 'diff';
+import { diffLines, createPatch, applyPatch } from 'diff';
 
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { useRouter } from 'next/navigation';
@@ -18,12 +18,14 @@ import { encryptSpaceKeyForMember } from '@/lib/crypto/private-space';
 import { decryptSpaceKeyForCurrentUser } from '@/lib/crypto/private-space-client';
 import { toast } from 'sonner';
 import { InviteToPrivateSpaceModal } from '@/components/private-spaces/InviteToPrivateSpaceModal';
+import { ImportProjectToSpaceModal, type ImportProjectClientPayload } from '@/components/private-spaces/ImportProjectToSpaceModal';
 import { KeypairManager } from '@/components/private-spaces/KeypairManager';
 import { motion, AnimatePresence } from 'framer-motion';
 import { StaggerList, StaggerItem, FadeIn } from '@/components/ui/animations';
 import { cn } from '@/lib/utils';
 import { ForkDiffViewer } from '@/components/private-spaces/ForkDiffViewer';
-import { ArrowLeftRight, CheckCircle2, ChevronRight, Crown, Database, FolderKanban, GitPullRequestArrow, History, KeyRound, Loader2, Plus, RefreshCw, Save, ShieldAlert, Trash2, Users, Vote, XCircle, Sparkles, Globe, Swords, MailCheck, AlertTriangle, GitMerge, FilePlus } from 'lucide-react';
+import { ArrowLeftRight, CheckCircle2, ChevronRight, Crown, Database, FolderKanban, GitPullRequestArrow, History, KeyRound, Loader2, Plus, RefreshCw, Save, ShieldAlert, Trash2, Users, Vote, XCircle, Sparkles, Globe, Swords, MailCheck, AlertTriangle, GitMerge, FilePlus, FileCode, Copy, UserPlus, LogOut, FolderGit2 } from 'lucide-react';
+import { FILE_DRAFT_PRESETS, getSuggestedPresetByFilename, type FileDraftPreset } from '@/lib/constants/file-presets';
 
 const workspaceCache = new Map<string, {
   space: SpacePayload;
@@ -33,50 +35,7 @@ const workspaceCache = new Map<string, {
 
 const OPTIMISTIC_MERGE_REQUEST_GRACE_MS = 15_000;
 
-const FILE_DRAFT_PRESETS = [
-  {
-    label: 'Markdown',
-    description: 'Docs, notes, readmes',
-    name: 'README.md',
-    folderPath: '/',
-    content: '# Untitled\n\n',
-  },
-  {
-    label: 'TypeScript',
-    description: 'App logic or utilities',
-    name: 'index.ts',
-    folderPath: '/src',
-    content: "export function main() {\n  return 'hello';\n}\n",
-  },
-  {
-    label: 'JavaScript',
-    description: 'Scripts and small modules',
-    name: 'script.js',
-    folderPath: '/src',
-    content: "export function main() {\n  return 'hello';\n}\n",
-  },
-  {
-    label: 'JSON',
-    description: 'Config and metadata',
-    name: 'config.json',
-    folderPath: '/config',
-    content: '{\n  "name": "private-space"\n}\n',
-  },
-  {
-    label: 'Env',
-    description: 'Secrets or environment flags',
-    name: '.env.local',
-    folderPath: '/',
-    content: 'API_URL=\nAPI_TOKEN=\n',
-  },
-  {
-    label: 'Text',
-    description: 'Scratch or plain text',
-    name: 'notes.txt',
-    folderPath: '/',
-    content: '',
-  },
-] as const;
+// Constants extracted to lib/constants/file-presets.ts
 
 function normalizeClientSpacePath(folderPath?: string | null) {
   if (!folderPath) return '/';
@@ -91,12 +50,10 @@ function normalizeClientSpacePath(folderPath?: string | null) {
 
 function sortPaths(paths: Iterable<string>) {
   return Array.from(paths).sort((left, right) => {
-    const leftDepth = left === '/' ? 0 : left.split('/').filter(Boolean).length;
-    const rightDepth = right === '/' ? 0 : right.split('/').filter(Boolean).length;
-    if (leftDepth !== rightDepth) {
-      return leftDepth - rightDepth;
-    }
-    return left.localeCompare(right);
+    if (left === right) return 0;
+    if (left === '/') return -1;
+    if (right === '/') return 1;
+    return left < right ? -1 : 1;
   });
 }
 
@@ -116,17 +73,7 @@ function buildFolderSuggestions(files: SpaceFile[]) {
   return sortPaths(folders);
 }
 
-function getSuggestedPresetByFilename(filename: string) {
-  const normalized = filename.trim().toLowerCase();
-  if (!normalized) return null;
-  if (normalized.endsWith('.md') || normalized === 'readme') return FILE_DRAFT_PRESETS[0];
-  if (normalized.endsWith('.ts') || normalized.endsWith('.tsx')) return FILE_DRAFT_PRESETS[1];
-  if (normalized.endsWith('.js') || normalized.endsWith('.jsx')) return FILE_DRAFT_PRESETS[2];
-  if (normalized.endsWith('.json')) return FILE_DRAFT_PRESETS[3];
-  if (normalized.startsWith('.env')) return FILE_DRAFT_PRESETS[4];
-  if (normalized.endsWith('.txt')) return FILE_DRAFT_PRESETS[5];
-  return null;
-}
+// getSuggestedPresetByFilename moved to lib/constants/file-presets.ts
 
 function getMergeRequestComparisonPath(request: MergeRequestPayload) {
   return normalizeClientSpacePath(
@@ -180,6 +127,40 @@ function reconcileMergeRequestLists(
 
   merged.sort((left, right) => Date.parse(right.createdAt) - Date.parse(left.createdAt));
   return merged;
+}
+
+function sortWorkspaceFiles(files: SpaceFile[]) {
+  return [...files].sort((left, right) => {
+    const pathCompare = normalizeClientSpacePath(left.folderPath).localeCompare(normalizeClientSpacePath(right.folderPath));
+    if (pathCompare !== 0) {
+      return pathCompare;
+    }
+    return left.name.localeCompare(right.name);
+  });
+}
+
+function sortWorkspaceSecrets(secrets: SpaceSecret[]) {
+  return [...secrets].sort((left, right) => {
+    const pathCompare = normalizeClientSpacePath(left.folderPath).localeCompare(normalizeClientSpacePath(right.folderPath));
+    if (pathCompare !== 0) {
+      return pathCompare;
+    }
+    return left.keyName.localeCompare(right.keyName);
+  });
+}
+
+function sortSpaceFolders(folders: SpaceFolder[]) {
+  return [...folders].sort((left, right) => {
+    const visibilityCompare = left.visibility.localeCompare(right.visibility);
+    if (visibilityCompare !== 0) {
+      return visibilityCompare;
+    }
+    const domainCompare = left.domain.localeCompare(right.domain);
+    if (domainCompare !== 0) {
+      return domainCompare;
+    }
+    return left.path.localeCompare(right.path);
+  });
 }
 
 function PlaintextDiff({
@@ -512,6 +493,8 @@ type SpacePayload = {
     inviteToken: string;
     createdAt: string;
     hasEncryptedSpaceKey: boolean;
+    recipientHasVaultKey?: boolean;
+    status?: string;
   }>;
   governance: {
     isCouncilMode: boolean;
@@ -641,12 +624,14 @@ export function PrivateSpaceWorkspace({ spaceId, userId, initialSpace = null, in
   const [draftName, setDraftName] = useState('');
   const [draftFolderPath, setDraftFolderPath] = useState('/');
   const [draftContent, setDraftContent] = useState('');
+  const [isAllTemplatesOpen, setIsAllTemplatesOpen] = useState(false);
   const [isSavingFile, setIsSavingFile] = useState(false);
   const [isCreatingDraftFile, setIsCreatingDraftFile] = useState(false);
   const [isCreatingDraftSecret, setIsCreatingDraftSecret] = useState(false);
   const [forkingKingFileId, setForkingKingFileId] = useState<string | null>(null);
   const [forkingKingSecretId, setForkingKingSecretId] = useState<string | null>(null);
   const [isInviteOpen, setIsInviteOpen] = useState(false);
+  const [isImportProjectOpen, setIsImportProjectOpen] = useState(false);
   const [newFileOpen, setNewFileOpen] = useState(false);
   const [newSecretOpen, setNewSecretOpen] = useState(false);
   const [newFolderOpen, setNewFolderOpen] = useState(false);
@@ -664,6 +649,7 @@ export function PrivateSpaceWorkspace({ spaceId, userId, initialSpace = null, in
   const [activePeerPayload, setActivePeerPayload] = useState<{
     mine: string;
     theirs: string;
+    kingText: string;
     peerLabel: string;
   } | null>(null);
   const [activeTab, setActiveTab] = useState('workspace');
@@ -919,6 +905,67 @@ export function PrivateSpaceWorkspace({ spaceId, userId, initialSpace = null, in
       },
       latest.mergeRequests
     );
+  }
+
+  function applyImportedProject(payload: ImportProjectClientPayload) {
+    const latest = getLatestWorkspaceState();
+    if (!latest.space) {
+      return;
+    }
+
+    const filesById = new Map(latest.space.files.map((file) => [file.id, file]));
+    for (const file of payload.result.files) {
+      filesById.set(file.id, file);
+    }
+
+    const secretsById = new Map(latest.space.secrets.map((secret) => [secret.id, secret]));
+    for (const secret of payload.result.secrets) {
+      secretsById.set(secret.id, secret);
+    }
+
+    const foldersById = new Map(latest.space.folders.map((folder) => [folder.id, folder]));
+    for (const folder of payload.result.folders) {
+      foldersById.set(folder.id, folder);
+    }
+
+    syncWorkspace(
+      {
+        ...latest.space,
+        files: sortWorkspaceFiles(Array.from(filesById.values())),
+        secrets: sortWorkspaceSecrets(Array.from(secretsById.values())),
+        folders: sortSpaceFolders(Array.from(foldersById.values())),
+      },
+      latest.mergeRequests
+    );
+
+    setDecryptedFileMap((current) => {
+      const next = { ...current };
+      for (const file of payload.result.files) {
+        const key = `${normalizeClientSpacePath(file.folderPath)}::${file.name}`;
+        const plaintext = payload.decryptedFiles[key];
+        if (plaintext !== undefined) {
+          next[file.id] = plaintext;
+        }
+      }
+      return next;
+    });
+
+    setDecryptedSecretMap((current) => {
+      const next = { ...current };
+      for (const secret of payload.result.secrets) {
+        const key = `${normalizeClientSpacePath(secret.folderPath)}::${secret.keyName}`;
+        const plaintext = payload.decryptedSecrets[key];
+        if (plaintext !== undefined) {
+          next[secret.id] = plaintext;
+        }
+      }
+      return next;
+    });
+
+    setWorkspaceScope(`folder:${payload.result.rootFolderPath}`);
+    if (payload.result.files.length > 0) {
+      setSelectedFileId(payload.result.files[0].id);
+    }
   }
 
   async function loadSpace(options?: { background?: boolean }) {
@@ -1716,6 +1763,21 @@ export function PrivateSpaceWorkspace({ spaceId, userId, initialSpace = null, in
       toast.error(error instanceof Error ? error.message : 'Could not create local draft secret');
     } finally {
       setIsCreatingDraftSecret(false);
+    }
+  }
+
+  async function handleInviteApproval(inviteId: string, action: 'APPROVE' | 'REJECT') {
+    try {
+      const res = await fetch(`/api/spaces/${spaceId}/invite/${inviteId}/approve`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ action }),
+      });
+      if (!res.ok) throw new Error('Could not process');
+      toast.success(action === 'APPROVE' ? 'Invite approved and sent' : 'Invite rejected');
+      loadSpace({ background: true });
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : 'Could not process request');
     }
   }
 
@@ -2828,10 +2890,12 @@ export function PrivateSpaceWorkspace({ spaceId, userId, initialSpace = null, in
 
       const theirs = await decryptSecret(peer.contentEncrypted, peer.iv, spaceKey);
       const mine = decryptedFileMap[selectedFile.id] ?? draftContent;
+      const kingText = decryptedKingFileMap[kingFileId] ?? '';
 
       setActivePeerPayload({
         mine,
         theirs,
+        kingText,
         peerLabel: peer.member.user.name || peer.member.user.email,
       });
     } catch (error) {
@@ -2868,7 +2932,7 @@ export function PrivateSpaceWorkspace({ spaceId, userId, initialSpace = null, in
                 <Users className="w-3.5 h-3.5" /> {space.members.length} members
               </span>
               <span className="flex items-center gap-1.5 text-indigo-200 text-sm">
-                <Globe className="w-3.5 h-3.5" /> {workspaceFiles.length + workspaceSecrets.length + kingFiles.length + kingSecrets.length} resources
+                <Globe className="w-3.5 h-3.5" /> {new Set([...workspaceFiles.map(f => `${f.folderPath}/${f.name}`), ...kingFiles.map(f => `${f.folderPath}/${f.name}`)]).size + new Set([...workspaceSecrets.map(s => `${s.folderPath}/${s.keyName}`), ...kingSecrets.map(s => `${s.folderPath}/${s.keyName}`)]).size} resources
               </span>
             </div>
             {space.governance.isCouncilMode && (
@@ -2902,27 +2966,55 @@ export function PrivateSpaceWorkspace({ spaceId, userId, initialSpace = null, in
             )}
           </div>
           <div className="flex flex-wrap gap-2">
-            <Button variant="secondary" size="sm" className="bg-white/10 text-white hover:bg-white/20 border-white/20" onClick={() => setNewSecretOpen(true)}>
-              <Plus className="mr-1.5 h-3.5 w-3.5" /> New Local Secret
-            </Button>
-            <Button variant="secondary" size="sm" className="bg-white/10 text-white hover:bg-white/20 border-white/20" onClick={() => { setNewFilePath(activeFolderPath); setNewFileOpen(true); }}>
-              <Plus className="mr-1.5 h-3.5 w-3.5" /> New Local Draft
-            </Button>
-            {space.governance.isCouncilMode && (
-              <Button variant="secondary" size="sm" className="bg-white/10 text-white hover:bg-white/20 border-white/20" onClick={callReelection} disabled={isElectionActive || isCallingReelection}>
-                Call Re-election
-              </Button>
+            {activeTab === 'workspace' && (
+              <>
+                <Button variant="secondary" size="sm" className="bg-white/10 text-white hover:bg-white/20 border-white/20" onClick={() => setIsImportProjectOpen(true)}>
+                  <FolderGit2 className="mr-1.5 h-3.5 w-3.5" /> Import Project
+                </Button>
+                <Button variant="secondary" size="sm" className="bg-white/10 text-white hover:bg-white/20 border-white/20" onClick={() => setNewSecretOpen(true)}>
+                  <Plus className="mr-1.5 h-3.5 w-3.5" /> New Local Secret
+                </Button>
+                <Button variant="secondary" size="sm" className="bg-white/10 text-white hover:bg-white/20 border-white/20" onClick={() => { setNewFilePath(activeFolderPath); setNewFileOpen(true); }}>
+                  <Plus className="mr-1.5 h-3.5 w-3.5" /> New Local Draft
+                </Button>
+                <Button variant="ghost" size="sm" className="text-white/70 hover:text-white hover:bg-white/10" onClick={() => { setShowClonePanel(true); fetchCloneRequests(); }}>
+                  <Copy className="mr-1.5 h-3.5 w-3.5" /> Clone from Peer
+                </Button>
+                <KeypairManager userId={userId} customButtonClass="text-white/70 hover:text-white hover:bg-white/10 border border-transparent" />
+              </>
             )}
-            <Button size="sm" className="bg-white text-indigo-700 hover:bg-indigo-50" onClick={() => setIsInviteOpen(true)} disabled={isElectionActive}>
-              Invite Member
-            </Button>
-            <Button variant="ghost" size="sm" className="text-white/70 hover:text-white hover:bg-white/10" onClick={() => { setShowClonePanel(true); fetchCloneRequests(); }}>
-              Clone from Peer
-            </Button>
-            <Button variant="ghost" size="sm" className="text-white/70 hover:text-white hover:bg-white/10" onClick={leaveSpace} disabled={isLeavingSpace}>
-              Leave Space
-            </Button>
-            <KeypairManager userId={userId} customButtonClass="text-white/70 hover:text-white hover:bg-white/10 border border-transparent" />
+
+            {activeTab === 'king' && (
+              <>
+                <Button size="sm" className="bg-white text-indigo-700 hover:bg-indigo-50" onClick={() => setIsInviteOpen(true)} disabled={isElectionActive}>
+                  <UserPlus className="mr-1.5 h-3.5 w-3.5" /> Invite Member
+                </Button>
+                {space.governance.isCouncilMode && (
+                  <Button variant="secondary" size="sm" className="bg-white/10 text-white hover:bg-white/20 border-white/20" onClick={callReelection} disabled={isElectionActive || isCallingReelection}>
+                    <Swords className="mr-1.5 h-3.5 w-3.5" /> Call Re-election
+                  </Button>
+                )}
+                <Button variant="ghost" size="sm" className="text-white/70 hover:text-white hover:bg-white/10" onClick={leaveSpace} disabled={isLeavingSpace}>
+                  <LogOut className="mr-1.5 h-3.5 w-3.5" /> Leave Space
+                </Button>
+              </>
+            )}
+
+            {activeTab === 'bundles' && (
+              <>
+                <Button variant="secondary" size="sm" className="bg-white/10 text-white hover:bg-white/20 border-white/20" onClick={() => setNewBundleOpen(true)}>
+                  <Plus className="mr-1.5 h-3.5 w-3.5" /> New Bundle
+                </Button>
+              </>
+            )}
+
+            {activeTab === 'merge-requests' && (
+              <>
+                <Button variant="ghost" size="sm" className="text-white/70 hover:text-white hover:bg-white/10" onClick={() => window.location.reload()}>
+                  <RefreshCw className="mr-1.5 h-3.5 w-3.5" /> Refresh Requests
+                </Button>
+              </>
+            )}
           </div>
         </div>
       </motion.div>
@@ -2975,26 +3067,45 @@ export function PrivateSpaceWorkspace({ spaceId, userId, initialSpace = null, in
           <div className="space-y-2">
             {space.pendingInvites.map((invite) => {
               const isRepairing = repairingInviteTokens.includes(invite.inviteToken);
+              const needsSignup = invite.recipientHasVaultKey === false;
+              
               return (
                 <div key={invite.id} className="flex items-center justify-between rounded-xl bg-white border border-amber-100 px-4 py-3">
                   <div className="flex items-center gap-3">
                     <span className="text-sm text-slate-700">{invite.recipientEmail}</span>
-                    {invite.hasEncryptedSpaceKey ? (
+                    {invite.status === 'PENDING_APPROVAL' ? (
+                      <Badge className="bg-purple-100 text-purple-700 border-purple-200 text-[10px]">Needs approval</Badge>
+                    ) : invite.hasEncryptedSpaceKey ? (
                       <Badge className="bg-emerald-100 text-emerald-700 border-emerald-200 text-[10px]">Ready to accept</Badge>
+                    ) : needsSignup ? (
+                      <Badge className="bg-slate-100 text-slate-600 border-slate-200 text-[10px]">Waiting for signup</Badge>
                     ) : (
                       <Badge className="bg-amber-100 text-amber-700 border-amber-200 text-[10px]">
                         {spaceKey ? 'Needs completion' : 'Waiting for unlock'}
                       </Badge>
                     )}
                   </div>
-                  {!invite.hasEncryptedSpaceKey && spaceKey ? (
+                  {invite.status === 'PENDING_APPROVAL' ? (
+                    <div className="flex items-center gap-1">
+                      <Button size="sm" className="text-xs h-7 bg-emerald-600 hover:bg-emerald-700"
+                        onClick={() => handleInviteApproval(invite.id, 'APPROVE')}>
+                        Approve
+                      </Button>
+                      <Button size="sm" variant="outline" className="text-xs h-7 text-rose-600"
+                        onClick={() => handleInviteApproval(invite.id, 'REJECT')}>
+                        Reject
+                      </Button>
+                    </div>
+                  ) : !invite.hasEncryptedSpaceKey && !needsSignup && spaceKey ? (
                     <Button size="sm" variant="outline" className="text-xs h-7"
                       onClick={() => repairInvite(invite)} disabled={isRepairing}>
                       {isRepairing ? <Loader2 className="w-3 h-3 mr-1 animate-spin" /> : null}
                       Complete Invite
                     </Button>
-                  ) : !invite.hasEncryptedSpaceKey && !spaceKey ? (
+                  ) : !invite.hasEncryptedSpaceKey && !needsSignup && !spaceKey ? (
                     <span className="text-[10px] text-slate-400">Waiting for space key to decrypt</span>
+                  ) : needsSignup ? (
+                    <span className="text-[10px] text-slate-400">Recipient must create an account</span>
                   ) : null}
                 </div>
               );
@@ -3107,19 +3218,18 @@ export function PrivateSpaceWorkspace({ spaceId, userId, initialSpace = null, in
                 <div className="space-y-1">
                   <div className="px-2 text-[10px] font-bold uppercase tracking-widest text-slate-400">Folders</div>
                   {personalFileFolders.map((folder) => {
-                    if (folder !== '/') {
-                      const parts = folder.split('/').filter(Boolean);
-                      let currentPath = '';
-                      let isHidden = false;
-                      for (let i = 0; i < parts.length - 1; i++) {
-                        currentPath += '/' + parts[i];
-                        if (collapsedFolders[currentPath]) {
-                          isHidden = true;
-                          break;
-                        }
+                    if (folder === '/') return null;
+                    const parts = folder.split('/').filter(Boolean);
+                    let currentPath = '';
+                    let isHidden = false;
+                    for (let i = 0; i < parts.length - 1; i++) {
+                      currentPath += '/' + parts[i];
+                      if (collapsedFolders[currentPath]) {
+                        isHidden = true;
+                        break;
                       }
-                      if (isHidden) return null;
                     }
+                    if (isHidden) return null;
                     
                     const hasChildren = personalFileFolders.some(f => f !== folder && f.startsWith(folder === '/' ? '/' : folder + '/'));
                     const isCollapsed = collapsedFolders[folder] ?? false;
@@ -3461,6 +3571,7 @@ export function PrivateSpaceWorkspace({ spaceId, userId, initialSpace = null, in
                 <div className="space-y-1">
                   <div className="px-2 text-[10px] font-bold uppercase tracking-widest text-slate-400">Folders</div>
                   {kingFileFolders.map((folder) => {
+                    if (folder === '/') return null;
                     const folderRecord = space.folders.find((item) => item.visibility === 'KING' && item.domain === 'FILE' && item.path === folder);
                     return (
                       <div key={`king-file-${folder}`} className="group flex items-center gap-2">
@@ -3495,6 +3606,7 @@ export function PrivateSpaceWorkspace({ spaceId, userId, initialSpace = null, in
                 <div className="space-y-1 border-t border-slate-100 pt-3">
                   <div className="px-2 text-[10px] font-bold uppercase tracking-widest text-slate-400">Secret folders</div>
                   {kingSecretFolders.map((folder) => {
+                    if (folder === '/') return null;
                     const folderRecord = space.folders.find((item) => item.visibility === 'KING' && item.domain === 'SECRET' && item.path === folder);
                     return (
                       <div key={`king-secret-${folder}`} className="group flex items-center gap-2">
@@ -3747,9 +3859,6 @@ export function PrivateSpaceWorkspace({ spaceId, userId, initialSpace = null, in
                 <p className="text-xs font-bold text-slate-500 uppercase tracking-widest">My Bundles</p>
                 <span className="text-[10px] text-slate-400">{space.bundles.length}</span>
               </div>
-              <Button size="icon" className="h-7 w-7 rounded-lg bg-violet-600 hover:bg-violet-700" onClick={() => setNewBundleOpen(true)}>
-                <Plus className="w-3.5 h-3.5" />
-              </Button>
             </div>
             {space.bundles.length === 0 ? (
               <div className="flex items-center justify-center py-20 rounded-2xl border-2 border-dashed border-slate-200 bg-slate-50/50">
@@ -4072,7 +4181,7 @@ export function PrivateSpaceWorkspace({ spaceId, userId, initialSpace = null, in
             <div className="space-y-3">
               <p className="text-[11px] font-bold uppercase tracking-wider text-slate-500">Starter Templates</p>
               <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
-                {FILE_DRAFT_PRESETS.map((preset) => (
+                {FILE_DRAFT_PRESETS.slice(0, 5).map((preset) => (
                   <button
                     key={preset.label}
                     type="button"
@@ -4092,6 +4201,15 @@ export function PrivateSpaceWorkspace({ spaceId, userId, initialSpace = null, in
                     </p>
                   </button>
                 ))}
+                <button
+                  type="button"
+                  onClick={() => setIsAllTemplatesOpen(true)}
+                  className="rounded-xl border-2 border-dashed border-slate-200 bg-slate-50 flex flex-col items-center justify-center p-3 transition-all duration-200 hover:border-indigo-300 hover:bg-indigo-50/50 group"
+                >
+                  <FilePlus className="w-5 h-5 text-slate-400 group-hover:text-indigo-600 mb-2 transition-colors" />
+                  <p className="text-sm font-bold text-slate-600 group-hover:text-indigo-700">See all templates</p>
+                  <p className="mt-1 text-xs text-slate-400 group-hover:text-indigo-500/70">40+ Languages</p>
+                </button>
               </div>
             </div>
             
@@ -4113,7 +4231,6 @@ export function PrivateSpaceWorkspace({ spaceId, userId, initialSpace = null, in
                     value={newFilePath}
                     onChange={(event) => setNewFilePath(event.target.value)}
                     onBlur={() => setNewFilePath((current) => normalizeClientSpacePath(current))}
-                    list="private-space-folder-suggestions"
                     className="font-mono text-sm bg-slate-50 focus-visible:ring-indigo-500 border-slate-200 pl-8"
                   />
                   <FolderKanban className="w-4 h-4 text-slate-400 absolute left-2.5 top-1/2 -translate-y-1/2" />
@@ -4149,13 +4266,32 @@ export function PrivateSpaceWorkspace({ spaceId, userId, initialSpace = null, in
 
             <div className="space-y-2">
               <p className="text-[11px] font-bold uppercase tracking-wider text-slate-500">File Content</p>
-              <Textarea
-                placeholder="Paste or type your configuration here..."
-                className="min-h-64 font-mono text-[13px] leading-relaxed bg-slate-50 focus-visible:ring-indigo-500 border-slate-200 resize-none shadow-inner"
-                value={newFileContent}
-                onChange={(event) => setNewFileContent(event.target.value)}
-                spellCheck={false}
-              />
+              <div className="flex relative border border-slate-200 rounded-md bg-white overflow-hidden shadow-inner focus-within:border-indigo-300 focus-within:ring-1 focus-within:ring-indigo-200 transition-all min-h-[256px]">
+                <div 
+                  className="w-10 shrink-0 bg-slate-50 border-r border-slate-100 text-right pr-2 py-3 select-none overflow-hidden"
+                  aria-hidden="true"
+                >
+                  {newFileContent.split('\n').map((_, i) => (
+                    <div key={i} className="text-[13px] leading-relaxed font-mono text-slate-400">
+                      {i + 1}
+                    </div>
+                  ))}
+                </div>
+                <textarea
+                  placeholder="Paste or type your configuration here..."
+                  className="flex-1 font-mono text-[13px] leading-relaxed bg-transparent border-0 outline-none resize-none p-3 overflow-auto"
+                  value={newFileContent}
+                  onChange={(event) => setNewFileContent(event.target.value)}
+                  wrap="off"
+                  spellCheck={false}
+                  onScroll={(e) => {
+                    const target = e.target as HTMLTextAreaElement;
+                    if (target.previousElementSibling) {
+                      target.previousElementSibling.scrollTop = target.scrollTop;
+                    }
+                  }}
+                />
+              </div>
             </div>
           </div>
           <DialogFooter className="border-t border-slate-100 pt-4 mt-2">
@@ -4172,6 +4308,54 @@ export function PrivateSpaceWorkspace({ spaceId, userId, initialSpace = null, in
               )}
             </Button>
           </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      <Dialog open={isAllTemplatesOpen} onOpenChange={setIsAllTemplatesOpen}>
+        <DialogContent className="sm:max-w-[800px] h-[85vh] flex flex-col p-0 overflow-hidden">
+          <div className="px-6 py-4 border-b border-slate-100 flex items-center justify-between bg-white shrink-0">
+            <div>
+              <DialogTitle className="text-xl flex items-center gap-2">
+                <FileCode className="w-5 h-5 text-indigo-600" /> All Starter Templates
+              </DialogTitle>
+              <p className="text-sm text-slate-500 mt-1">Select a template to start with boilerplate code and standard file paths.</p>
+            </div>
+            <div className="bg-indigo-50 text-indigo-700 px-3 py-1 rounded-full text-xs font-bold uppercase tracking-widest flex items-center gap-1">
+              <Sparkles className="w-3.5 h-3.5" /> {FILE_DRAFT_PRESETS.length} Languages
+            </div>
+          </div>
+          
+          <div className="flex-1 overflow-y-auto p-6 bg-slate-50">
+            <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
+              {FILE_DRAFT_PRESETS.map((preset) => (
+                <button
+                  key={`all-${preset.label}`}
+                  type="button"
+                  onClick={() => {
+                    applyFileDraftPreset(preset);
+                    setIsAllTemplatesOpen(false);
+                  }}
+                  className={cn(
+                    "rounded-xl border border-slate-200 bg-white p-3 text-left transition-all duration-200 shadow-sm",
+                    "hover:border-indigo-300 hover:shadow-md hover:-translate-y-0.5",
+                    newFileName === preset.name && normalizeClientSpacePath(newFilePath) === normalizeClientSpacePath(preset.folderPath)
+                      ? "ring-2 ring-indigo-500 border-indigo-500 bg-indigo-50/50" 
+                      : ""
+                  )}
+                >
+                  <p className="text-sm font-bold text-slate-900">{preset.label}</p>
+                  <p className="mt-1 text-xs text-slate-500 leading-relaxed truncate">{preset.description}</p>
+                  <p className="mt-2.5 font-mono text-[10px] text-slate-400 font-medium">
+                    {preset.folderPath === '/' ? 'Root' : preset.folderPath} / <span className="text-indigo-600 font-bold truncate">{preset.name}</span>
+                  </p>
+                </button>
+              ))}
+            </div>
+          </div>
+          
+          <div className="p-4 border-t border-slate-100 bg-white shrink-0 flex justify-end">
+            <Button variant="ghost" onClick={() => setIsAllTemplatesOpen(false)}>Close</Button>
+          </div>
         </DialogContent>
       </Dialog>
 
@@ -4337,29 +4521,45 @@ export function PrivateSpaceWorkspace({ spaceId, userId, initialSpace = null, in
           </DialogHeader>
           {activePeerPayload && (
             <div className="space-y-4">
-              <div className="flex items-center gap-4 text-xs font-medium text-slate-500 bg-slate-50 px-3 py-2 rounded-lg border border-slate-200/60 w-fit">
-                <div className="flex items-center gap-1.5"><span className="w-2 h-2 rounded-sm bg-emerald-500" /> Added</div>
-                <div className="flex items-center gap-1.5"><span className="w-2 h-2 rounded-sm bg-rose-500" /> Deleted</div>
-                <div className="flex items-center gap-1.5"><span className="w-2 h-2 rounded-sm bg-amber-500" /> Modified</div>
-              </div>
-              <div className="h-[65vh] min-h-[400px] overflow-hidden rounded-xl border border-slate-200 bg-slate-50 p-4">
-                <div className="h-full rounded-xl border border-slate-200 overflow-hidden shadow-sm bg-white">
-                  <PlaintextDiff
-                    original={activePeerPayload.mine}
-                    modified={activePeerPayload.theirs}
-                    originalLabel="Your draft"
-                    modifiedLabel={activePeerPayload.peerLabel}
-                  />
+              {activePeerPayload.mine === activePeerPayload.theirs ? (
+                <div className="flex flex-col items-center justify-center p-12 text-center border rounded-xl bg-slate-50 border-slate-200">
+                  <div className="w-16 h-16 bg-emerald-100 text-emerald-600 rounded-full flex items-center justify-center mb-4">
+                    <CheckCircle2 className="w-8 h-8" />
+                  </div>
+                  <h3 className="text-lg font-bold text-slate-900">Contents are Identical</h3>
+                  <p className="text-slate-500 mt-2 max-w-md">
+                    Both of you have the exact same content in your drafts. There is no need to merge anything!
+                  </p>
                 </div>
-              </div>
+              ) : (
+                <>
+                  <div className="flex items-center gap-4 text-xs font-medium text-slate-500 bg-slate-50 px-3 py-2 rounded-lg border border-slate-200/60 w-fit">
+                    <div className="flex items-center gap-1.5"><span className="w-2 h-2 rounded-sm bg-emerald-500" /> Added</div>
+                    <div className="flex items-center gap-1.5"><span className="w-2 h-2 rounded-sm bg-rose-500" /> Deleted</div>
+                    <div className="flex items-center gap-1.5"><span className="w-2 h-2 rounded-sm bg-amber-500" /> Modified</div>
+                  </div>
+                  <div className="h-[65vh] min-h-[400px] overflow-hidden rounded-xl border border-slate-200 bg-slate-50 p-4">
+                    <div className="h-full rounded-xl border border-slate-200 overflow-hidden shadow-sm bg-white">
+                      <PlaintextDiff
+                        original={activePeerPayload.mine}
+                        modified={activePeerPayload.theirs}
+                        originalLabel="Your draft"
+                        modifiedLabel={activePeerPayload.peerLabel}
+                      />
+                    </div>
+                  </div>
+                </>
+              )}
               <DialogFooter className="border-t border-slate-100 pt-2">
                 <Button variant="outline" onClick={() => setActivePeerPayload(null)}>
                   Close
                 </Button>
-                <Button className="bg-indigo-600 hover:bg-indigo-700" onClick={() => setShowMergeConfirm(true)}>
-                  <ArrowLeftRight className="w-4 h-4 mr-2" />
-                  Merge Into Mine
-                </Button>
+                {activePeerPayload.mine !== activePeerPayload.theirs && (
+                  <Button className="bg-indigo-600 hover:bg-indigo-700" onClick={() => setShowMergeConfirm(true)}>
+                    <ArrowLeftRight className="w-4 h-4 mr-2" />
+                    Merge Into Mine
+                  </Button>
+                )}
               </DialogFooter>
             </div>
           )}
@@ -4433,25 +4633,48 @@ export function PrivateSpaceWorkspace({ spaceId, userId, initialSpace = null, in
       <Dialog open={showMergeConfirm} onOpenChange={setShowMergeConfirm}>
         <DialogContent className="sm:max-w-md">
           <DialogHeader>
-            <DialogTitle className="flex items-center gap-2 text-amber-600">
-              <AlertTriangle className="w-5 h-5" />
-              Overwrite Your Draft
+            <DialogTitle className="flex items-center gap-2 text-indigo-600">
+              <GitMerge className="w-5 h-5" />
+              Merge Peer Changes
             </DialogTitle>
             <DialogDescription>
-              This will replace your entire current draft with {activePeerPayload?.peerLabel}'s version. Any unsaved changes will be lost.
+              This will safely merge {activePeerPayload?.peerLabel}'s changes into your draft. Your existing changes will be preserved unless there is a direct conflict.
             </DialogDescription>
           </DialogHeader>
           <DialogFooter>
             <Button variant="outline" onClick={() => setShowMergeConfirm(false)}>Cancel</Button>
-            <Button className="bg-amber-600 hover:bg-amber-700" onClick={async () => {
+            <Button className="bg-indigo-600 hover:bg-indigo-700" onClick={async () => {
               if (!activePeerPayload) return;
-              await saveFileWithContent(activePeerPayload.theirs);
-              setActivePeerPayload(null);
-              setShowMergeConfirm(false);
-            }}>Yes, Overwrite & Save</Button>
+              try {
+                const patch = createPatch('file', activePeerPayload.kingText, activePeerPayload.theirs);
+                const mergedResult = applyPatch(activePeerPayload.mine, patch);
+                
+                if (!mergedResult || typeof mergedResult !== 'string') {
+                  toast.error("Merge Conflict", { description: "Cannot auto-merge changes. There are overlapping conflicts between your drafts." });
+                  setShowMergeConfirm(false);
+                  return;
+                }
+
+                await saveFileWithContent(mergedResult);
+                setActivePeerPayload(null);
+                setShowMergeConfirm(false);
+                toast.success("Successfully merged peer changes into your draft.");
+              } catch (err) {
+                toast.error("Merge failed", { description: "An error occurred while merging the changes." });
+                setShowMergeConfirm(false);
+              }
+            }}>Merge Changes</Button>
           </DialogFooter>
         </DialogContent>
       </Dialog>
+
+      <ImportProjectToSpaceModal
+        open={isImportProjectOpen}
+        onOpenChange={setIsImportProjectOpen}
+        spaceId={spaceId}
+        spaceKey={spaceKey}
+        onImported={applyImportedProject}
+      />
 
       <InviteToPrivateSpaceModal
         open={isInviteOpen}
@@ -4471,6 +4694,7 @@ export function PrivateSpaceWorkspace({ spaceId, userId, initialSpace = null, in
                   inviteToken: invite.inviteToken,
                   createdAt: new Date().toISOString(),
                   hasEncryptedSpaceKey: invite.recipient.hasVaultKey,
+                  recipientHasVaultKey: invite.recipient.hasVaultKey,
                 },
                 ...latest.space.pendingInvites,
               ],

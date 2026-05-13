@@ -1,4 +1,6 @@
 const BREVO_TRANSACTIONAL_URL = 'https://api.brevo.com/v3/smtp/email';
+const DEFAULT_BREVO_TIMEOUT_MS = 10_000;
+const DEFAULT_BREVO_RETRY_COUNT = 2;
 
 type BrevoRecipient = {
   email: string;
@@ -19,6 +21,13 @@ type BrevoResponse = {
   message?: string;
 };
 
+export class EmailDeliveryError extends Error {
+  constructor(message: string, public readonly cause?: unknown) {
+    super(message);
+    this.name = 'EmailDeliveryError';
+  }
+}
+
 export function getBrevoApiKey() {
   return process.env.BREVO_API_KEY?.trim() || '';
 }
@@ -38,6 +47,20 @@ export function getBrevoSender() {
   return { email, name };
 }
 
+function getBrevoTimeoutMs() {
+  const parsed = Number.parseInt(process.env.BREVO_TIMEOUT_MS?.trim() || '', 10);
+  return Number.isFinite(parsed) && parsed > 0 ? parsed : DEFAULT_BREVO_TIMEOUT_MS;
+}
+
+function getBrevoRetryCount() {
+  const parsed = Number.parseInt(process.env.BREVO_RETRY_COUNT?.trim() || '', 10);
+  return Number.isFinite(parsed) && parsed >= 0 ? parsed : DEFAULT_BREVO_RETRY_COUNT;
+}
+
+function wait(ms: number) {
+  return new Promise((resolve) => setTimeout(resolve, ms));
+}
+
 export async function sendBrevoTransactionalEmail({
   to,
   subject,
@@ -51,36 +74,52 @@ export async function sendBrevoTransactionalEmail({
   }
 
   const sender = getBrevoSender();
+  const timeoutMs = getBrevoTimeoutMs();
+  const retries = getBrevoRetryCount();
+  let lastError: unknown = null;
 
-  const response = await fetch(BREVO_TRANSACTIONAL_URL, {
-    method: 'POST',
-    headers: {
-      accept: 'application/json',
-      'content-type': 'application/json',
-      'api-key': apiKey,
-    },
-    body: JSON.stringify({
-      sender,
-      to,
-      subject,
-      htmlContent,
-      ...(textContent ? { textContent } : {}),
-      ...(sandbox ? { headers: { 'X-Sib-Sandbox': 'drop' } } : {}),
-    }),
-    cache: 'no-store',
-  });
+  for (let attempt = 0; attempt <= retries; attempt += 1) {
+    try {
+      const response = await fetch(BREVO_TRANSACTIONAL_URL, {
+        method: 'POST',
+        headers: {
+          accept: 'application/json',
+          'content-type': 'application/json',
+          'api-key': apiKey,
+        },
+        body: JSON.stringify({
+          sender,
+          to,
+          subject,
+          htmlContent,
+          ...(textContent ? { textContent } : {}),
+          ...(sandbox ? { headers: { 'X-Sib-Sandbox': 'drop' } } : {}),
+        }),
+        cache: 'no-store',
+        signal: AbortSignal.timeout(timeoutMs),
+      });
 
-  const payload = (await response.json().catch(() => null)) as BrevoResponse | null;
+      const payload = (await response.json().catch(() => null)) as BrevoResponse | null;
 
-  if (!response.ok) {
-    throw new Error(
-      payload?.message || payload?.code || `Brevo email request failed with status ${response.status}`
-    );
+      if (!response.ok) {
+        throw new EmailDeliveryError(
+          payload?.message || payload?.code || `Brevo email request failed with status ${response.status}`
+        );
+      }
+
+      if (!payload?.messageId) {
+        throw new EmailDeliveryError('Brevo email request succeeded without a messageId');
+      }
+
+      return payload.messageId;
+    } catch (error) {
+      lastError = error;
+      if (attempt >= retries) {
+        break;
+      }
+      await wait(400 * (attempt + 1));
+    }
   }
 
-  if (!payload?.messageId) {
-    throw new Error('Brevo email request succeeded without a messageId');
-  }
-
-  return payload.messageId;
+  throw new EmailDeliveryError('Could not deliver email through Brevo', lastError);
 }

@@ -38,16 +38,21 @@ type InvitationItem = {
   createdAt: string;
   expiresAt: string | null;
   space: { id: string; name: string; createdAt: string };
-  inviter: { id: string; email: string; name: string | null };
+  inviter: { id: string; email: string; username?: string | null; name: string | null };
 };
+
+function personLabel(person: { username?: string | null; name?: string | null; email?: string | null }) {
+  return person.username ? `@${person.username}` : person.name || person.email || "Unknown";
+}
 
 type Props = {
   userId: string;
+  totalUniqueMembers?: number;
   spaces: SpaceItem[];
   invitations: InvitationItem[];
 };
 
-export function PrivateSpacesHub({ userId, spaces, invitations }: Props) {
+export function PrivateSpacesHub({ userId, totalUniqueMembers, spaces, invitations }: Props) {
   const router = useRouter();
   const [pendingToken, setPendingToken] = useState<string | null>(null);
   const [localSpaces, setLocalSpaces] = useState(spaces);
@@ -261,7 +266,8 @@ export function PrivateSpacesHub({ userId, spaces, invitations }: Props) {
     }
   }
 
-  const totalMembers = localSpaces.reduce((sum, s) => sum + (s._count?.members ?? 0), 0);
+  const sumMembers = localSpaces.reduce((sum, s) => sum + (s._count?.members ?? 0), 0);
+  const displayMembers = totalUniqueMembers ?? sumMembers;
   const totalResources = localSpaces.reduce((sum, s) => sum + (s._count?.kingFiles ?? 0) + (s._count?.kingSecrets ?? 0), 0);
 
   return (
@@ -312,7 +318,7 @@ export function PrivateSpacesHub({ userId, spaces, invitations }: Props) {
             </div>
             <div className="flex items-center gap-2 text-indigo-200">
               <Users className="w-4 h-4" />
-              <span className="text-sm font-medium">{totalMembers} member{totalMembers !== 1 ? 's' : ''}</span>
+              <span className="text-sm font-medium">{displayMembers} member{displayMembers !== 1 ? 's' : ''}</span>
             </div>
             <div className="flex items-center gap-2 text-indigo-200">
               <FileText className="w-4 h-4" />
@@ -320,10 +326,7 @@ export function PrivateSpacesHub({ userId, spaces, invitations }: Props) {
             </div>
           </div>
         </div>
-        <div className="relative z-10 flex items-center justify-between">
-          <KeypairManager userId={userId} />
-        </div>
-        <div className="absolute top-6 right-6 z-20">
+        <div className="absolute top-6 right-6 z-20 flex flex-col items-end gap-3">
           <CreatePrivateSpaceModal
             userId={userId}
             disabled={vaultKeyStatus !== 'ready'}
@@ -334,6 +337,7 @@ export function PrivateSpacesHub({ userId, spaces, invitations }: Props) {
               ]);
             }}
           />
+          <KeypairManager userId={userId} customButtonClass="text-indigo-200 hover:text-white bg-white/10 hover:bg-white/20 border-white/20" />
         </div>
       </motion.div>
 
@@ -376,7 +380,7 @@ export function PrivateSpacesHub({ userId, spaces, invitations }: Props) {
                         )}
                       </div>
                       <p className="text-sm text-slate-600">
-                        Invited by {invitation.inviter.name || invitation.inviter.email}
+                        Invited by {personLabel(invitation.inviter)}
                       </p>
                     </div>
                     <div className="flex items-center gap-2">

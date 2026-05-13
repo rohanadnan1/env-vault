@@ -60,9 +60,11 @@ export function InviteToPrivateSpaceModal({ open, onOpenChange, spaceId, spaceKe
       if (!res.ok) throw new Error(payload.error || 'Could not send invite');
 
       toast.success(
-        payload.needsRepair
-          ? 'Invite saved. Complete it once the recipient sets up their vault.'
-          : 'Invite sent — ready to accept'
+        payload.needsApproval
+          ? 'Invite sent for creator approval'
+          : payload.needsRepair
+            ? 'Invite saved. Complete it once the recipient sets up their vault.'
+            : 'Invite sent — ready to accept'
       );
       setEmail('');
       onOpenChange(false);
@@ -83,12 +85,15 @@ export function InviteToPrivateSpaceModal({ open, onOpenChange, spaceId, spaceKe
             Invite a teammate by email. Their personal fork will be created when they join.
           </DialogDescription>
         </DialogHeader>
-        <Input
-          type="email"
-          placeholder="teammate@company.com"
-          value={email}
-          onChange={(event) => setEmail(event.target.value)}
-        />
+        <div className="space-y-1.5">
+          <Input
+            type="text"
+            placeholder="@username or email@company.com"
+            value={email}
+            onChange={(event) => setEmail(event.target.value)}
+          />
+          <p className="text-[10px] text-slate-400">Use @username to invite an existing user, or enter their email address.</p>
+        </div>
         <DialogFooter>
           <Button variant="outline" onClick={() => onOpenChange(false)} disabled={isSubmitting}>
             Cancel

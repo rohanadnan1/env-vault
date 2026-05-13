@@ -98,13 +98,19 @@ async function loadPrivateSpaceWorkspace(spaceId: string, userId: string) {
           orderBy: [{ folderPath: 'asc' }, { keyName: 'asc' }],
         },
         invitations: {
-          where: { status: 'PENDING' },
+          where: { status: { in: ['PENDING', 'PENDING_APPROVAL'] } },
           select: {
             id: true,
             recipientEmail: true,
             createdAt: true,
             inviteToken: true,
             encryptedSpaceKey: true,
+            status: true,
+            recipient: {
+              select: {
+                vaultPublicKey: true,
+              },
+            },
           },
         },
       },
@@ -315,6 +321,8 @@ async function loadPrivateSpaceWorkspace(spaceId: string, userId: string) {
       inviteToken: invite.inviteToken,
       createdAt: invite.createdAt.toISOString(),
       hasEncryptedSpaceKey: !!invite.encryptedSpaceKey,
+      recipientHasVaultKey: !!invite.recipient?.vaultPublicKey,
+      status: invite.status,
     })),
     governance: {
       isCouncilMode: governance.isCouncilMode,

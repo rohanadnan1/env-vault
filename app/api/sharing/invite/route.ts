@@ -5,6 +5,7 @@ import { z } from 'zod';
 import crypto from 'crypto';
 import { CreateShareInvitationSchema } from '@/lib/validations/schemas';
 import { sharingInviteLimiter } from '@/lib/ratelimit';
+import { getUserLabel } from '@/lib/username';
 import {
   getEmailBaseUrl,
   sendBrevoTransactionalEmail,
@@ -106,7 +107,7 @@ export async function POST(req: Request) {
     });
 
     try {
-      const ownerName = session.user.name || 'A user';
+      const ownerName = getUserLabel(session.user);
       const permissionLabel = data.permission === 'READ_ONLY' ? 'Read only' : data.permission === 'COMMENT' ? 'Comment' : 'Edit';
       const expiryLabel = expiresAt ? expiresAt.toLocaleDateString() : 'No expiry';
       const noteBlock = data.note

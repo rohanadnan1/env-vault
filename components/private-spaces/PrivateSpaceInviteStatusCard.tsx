@@ -27,9 +27,14 @@ type InvitationPayload = {
   inviter: {
     id: string;
     email: string;
+    username?: string | null;
     name: string | null;
   };
 };
+
+function personLabel(person: { username?: string | null; name?: string | null; email?: string | null }) {
+  return person.username ? `@${person.username}` : person.name || person.email || "Unknown";
+}
 
 type Props = {
   userId: string;
@@ -138,7 +143,7 @@ export function PrivateSpaceInviteStatusCard({ userId, initialInvitation }: Prop
           )}
         </div>
         <p className="mt-3 text-sm text-slate-600">
-          {invitation.inviter.name || invitation.inviter.email} invited you to join this private space.
+          {personLabel(invitation.inviter)} invited you to join this private space.
         </p>
 
         {keypairWasMissing && isReady && (

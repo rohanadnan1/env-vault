@@ -11,6 +11,7 @@ import {
 } from '@/components/ui/dialog';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
+import { PasswordInput } from '@/components/ui/password-input';
 import { Label } from '@/components/ui/label';
 import { Switch } from '@/components/ui/switch';
 import { 
@@ -203,9 +204,8 @@ export function ShareModal({
               <Label htmlFor="passphrase">Protection Passphrase</Label>
               <div className="relative">
                 <Lock className="w-4 h-4 absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" />
-                <Input
+                <PasswordInput
                   id="passphrase"
-                  type="password"
                   placeholder="Set a one-time passphrase..."
                   className="pl-9"
                   value={passphrase}

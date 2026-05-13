@@ -39,7 +39,7 @@ export async function GET(req: Request) {
           },
         },
         requester: {
-          select: { id: true, name: true, email: true },
+          select: { id: true, username: true, name: true, email: true },
         },
       },
       orderBy: { createdAt: 'desc' },

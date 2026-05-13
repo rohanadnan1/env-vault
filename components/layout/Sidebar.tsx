@@ -3,7 +3,7 @@
 import { useState, useCallback } from 'react';
 import Link from 'next/link';
 import { usePathname, useRouter } from 'next/navigation';
-import { FolderGit2, Users, Share2, Settings, Boxes } from 'lucide-react';
+import { FolderGit2, Users, Share2, Settings, Boxes, FileKey } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { CreateProjectModal } from '@/components/vault/CreateProjectModal';
 import { preload } from 'swr';
@@ -56,6 +56,13 @@ export function Sidebar({ projects, sharedCount }: SidebarProps) {
       label: 'Sharing',
       icon: Share2,
       isActive: pathname.startsWith('/sharing'),
+      showCount: false,
+    },
+    {
+      href: '/keys-and-codes',
+      label: 'Keys & Codes',
+      icon: FileKey,
+      isActive: pathname.startsWith('/keys-and-codes'),
       showCount: false,
     },
     {

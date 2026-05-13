@@ -11,6 +11,7 @@ import {
 } from '@/components/ui/dialog';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
+import { PasswordInput } from '@/components/ui/password-input';
 import { Label } from '@/components/ui/label';
 import { Textarea } from '@/components/ui/textarea';
 import { Badge } from '@/components/ui/badge';
@@ -677,10 +678,8 @@ export function ShareResourceModal({
                     </Label>
                     <div className="relative">
                       <Lock className="pointer-events-none absolute left-3 top-1/2 size-4 -translate-y-1/2 text-slate-400" />
-                      <Input
+                      <PasswordInput
                         id="share-passphrase"
-                        className="pl-9"
-                        type="password"
                         placeholder="Set a passphrase (min 8 chars)"
                         value={passphrase}
                         onChange={(e) => setPassphrase(e.target.value)}
@@ -702,10 +701,8 @@ export function ShareResourceModal({
                     </Label>
                     <div className="relative">
                       <Lock className="pointer-events-none absolute left-3 top-1/2 size-4 -translate-y-1/2 text-amber-400" />
-                      <Input
+                      <PasswordInput
                         id="share-passphrase"
-                        className="pl-9 border-amber-200"
-                        type="password"
                         placeholder="Enter a new shared passphrase"
                         value={passphrase}
                         onChange={(e) => setPassphrase(e.target.value)}
@@ -743,10 +740,8 @@ export function ShareResourceModal({
                       </Label>
                       <div className="relative">
                         <Lock className="pointer-events-none absolute left-3 top-1/2 size-4 -translate-y-1/2 text-emerald-400" />
-                        <Input
+                        <PasswordInput
                           id="share-passphrase"
-                          className="pl-9 border-emerald-200"
-                          type="password"
                           placeholder="Enter your existing shared passphrase"
                           value={passphrase}
                           onChange={(e) => setPassphrase(e.target.value)}
