@@ -11,7 +11,7 @@ export async function GET() {
     const invitations = await db.shareInvitation.findMany({
       where: { ownerId: session.user.id },
       include: {
-        recipient: { select: { id: true, name: true, email: true } },
+        recipient: { select: { id: true, username: true, name: true, email: true } },
         project: { select: { id: true, name: true, emoji: true, color: true } },
         _count: { select: { accessLogs: true, comments: true, editRequests: true, downloadLogs: true } }
       },

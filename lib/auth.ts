@@ -40,7 +40,7 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
   session: { strategy: "jwt" },
   callbacks: {
     ...authConfig.callbacks,
-    async jwt({ token, user, trigger }) {
+    async jwt({ token, user, trigger, session }) {
       try {
         if (user) {
           // Initial sign-in: embed sessionVersion when available.
@@ -48,6 +48,9 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
           const result = await lookupSessionVersion(userId);
 
           token.id = userId;
+          token.name = user.name;
+          token.image = user.image;
+          token.username = user.username;
           token.sessionVersion =
             result.status === "ok" && result.sessionVersion !== null
               ? result.sessionVersion
@@ -55,6 +58,17 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
           token.emailVerified = result.status === "ok" ? result.emailVerified : false;
           token.sessionVersionCheckedAt = Date.now();
         } else if (trigger === 'update') {
+          const nextName =
+            typeof session?.name === "string" ? session.name : session?.user?.name;
+          const nextImage =
+            typeof session?.image === "string" ? session.image : session?.user?.image;
+          const nextUsername =
+            typeof session?.username === "string" ? session.username : session?.user?.username;
+
+          if (typeof nextName === "string") token.name = nextName;
+          if (typeof nextImage === "string") token.image = nextImage;
+          if (typeof nextUsername === "string" || nextUsername === null) token.username = nextUsername;
+
           // Forced refresh (keep current device after sign-out-all)
           if (token.id) {
             const result = await lookupSessionVersion(token.id as string);
@@ -112,6 +126,11 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
     async session({ session, token }) {
       if (session.user && token.id) {
         session.user.id = token.id as string;
+        if (typeof token.name === "string") session.user.name = token.name;
+        if (typeof token.image === "string") session.user.image = token.image;
+        if (typeof token.username === "string" || token.username === null) {
+          session.user.username = token.username;
+        }
       }
       return session;
     },
@@ -144,6 +163,7 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
           id: user.id,
           email: user.email,
           name: user.name,
+          username: user.username,
           image: user.image,
         };
       }

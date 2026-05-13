@@ -61,8 +61,8 @@ interface InvitationData {
   acceptedAt: string | null;
   revokedAt: string | null;
   firstAccessedAt: string | null;
-  recipient?: { id: string; name: string | null; email: string } | null;
-  owner?: { id: string; name: string | null; email: string } | null;
+  recipient?: { id: string; username?: string | null; name: string | null; email: string } | null;
+  owner?: { id: string; username?: string | null; name: string | null; email: string } | null;
   project?: { id: string; name: string; emoji: string; color: string } | null;
   _count?: { accessLogs: number; comments: number; editRequests?: number; downloadLogs?: number };
 }
@@ -77,7 +77,7 @@ interface ActiveLinksData {
     action: string;
     resourceDetail: string | null;
     accessedAt: string;
-    user: { name: string | null; email: string } | null;
+    user: { username?: string | null; name: string | null; email: string } | null;
     resourceType: string;
   }>;
 }
@@ -93,8 +93,13 @@ interface EditRequestData {
   reviewNote: string | null;
   createdAt: string;
   updatedAt: string;
-  requester: { id: string; name: string | null; email: string };
-  owner: { id: string; name: string | null };
+  requester: { id: string; username?: string | null; name: string | null; email: string };
+  owner: { id: string; username?: string | null; name: string | null };
+}
+
+function personLabel(person: { username?: string | null; name?: string | null; email?: string | null } | null | undefined) {
+  if (!person) return 'Unknown';
+  return person.username ? `@${person.username}` : person.name || person.email || 'Unknown';
 }
 
 function resourceIcon(type: string) {
@@ -187,7 +192,7 @@ function activityLabel(action: string) {
   }
 }
 
-export function SharingPageContent({ userId, userName, defaultTab }: { userId: string; userName: string | null | undefined; defaultTab: string }) {
+export function SharingPageContent({ userId, defaultTab }: { userId: string; defaultTab: string }) {
   const router = useRouter();
   const [activeTab, setActiveTab] = useState(defaultTab);
 
@@ -535,8 +540,8 @@ export function SharingPageContent({ userId, userName, defaultTab }: { userId: s
                         <div className="flex items-center gap-2 text-sm text-slate-700 mb-2">
                           <UserPlus className="w-4 h-4 text-slate-400 shrink-0" />
                           <span className="font-medium truncate">{inv.recipientEmail}</span>
-                          {inv.recipient?.name && (
-                            <span className="text-slate-400">({inv.recipient.name})</span>
+                          {inv.recipient && (
+                            <span className="text-slate-400">({personLabel(inv.recipient)})</span>
                           )}
                         </div>
 
@@ -748,7 +753,7 @@ export function SharingPageContent({ userId, userName, defaultTab }: { userId: s
                       <div className="flex items-center gap-3 text-xs text-slate-500 mb-4">
                         <span className="flex items-center gap-1.5">
                           <Users className="w-3.5 h-3.5" />
-                          {er.requester.name || er.requester.email}
+                          {personLabel(er.requester)}
                         </span>
                         <span className="flex items-center gap-1.5">
                           <Calendar className="w-3.5 h-3.5" />

@@ -14,6 +14,7 @@ import {
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
+import { PasswordInput } from '@/components/ui/password-input';
 import { Label } from '@/components/ui/label';
 import { Card, CardHeader, CardTitle, CardDescription, CardContent, CardFooter } from '@/components/ui/card';
 import { toast } from 'sonner';
@@ -146,9 +147,8 @@ export default function ShareRecipientPage({ params }: { params: Promise<{ token
                 <Label htmlFor="passphrase">Enter Passphrase</Label>
                 <div className="relative">
                   <Lock className="w-4 h-4 absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" />
-                  <Input
+                  <PasswordInput
                     id="passphrase"
-                    type="password"
                     placeholder="Provided by sender..."
                     className="pl-10 h-12 bg-slate-50/50 border-slate-200 focus:bg-white transition-all rounded-xl"
                     value={passphrase}

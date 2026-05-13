@@ -20,6 +20,7 @@ export async function GET(req: Request) {
     select: {
       id: true,
       email: true,
+      username: true,
       name: true,
       vaultPublicKey: true,
       vaultPublicKeyAlgorithm: true,
@@ -36,6 +37,7 @@ export async function GET(req: Request) {
       hasVaultKey: false,
       userId: user.id,
       email: user.email,
+      username: user.username,
       name: user.name,
     });
   }
@@ -45,6 +47,7 @@ export async function GET(req: Request) {
     hasVaultKey: true,
     userId: user.id,
     email: user.email,
+    username: user.username,
     name: user.name,
     vaultPublicKey: user.vaultPublicKey,
     vaultPublicKeyAlgorithm: user.vaultPublicKeyAlgorithm ?? 'RSA-OAEP-256',

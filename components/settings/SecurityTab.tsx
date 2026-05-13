@@ -56,6 +56,7 @@ import {
 } from "@/lib/store/vaultStore";
 import { useSession } from "next-auth/react";
 import { Input } from "@/components/ui/input";
+import { PasswordInput } from "@/components/ui/password-input";
 import { Switch } from "@/components/ui/switch";
 
 export function SecurityTab() {
@@ -594,9 +595,8 @@ export function SecurityTab() {
           <div className="space-y-4 py-4">
             <div className="space-y-2">
               <Label htmlFor="bio-master-password">Master Password</Label>
-              <Input
+              <PasswordInput
                 id="bio-master-password"
-                type="password"
                 placeholder="Enter your master password"
                 value={masterPassword}
                 onChange={(e) => setMasterPassword(e.target.value)}

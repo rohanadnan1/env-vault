@@ -16,8 +16,8 @@ export async function GET(
     const invitation = await db.shareInvitation.findUnique({
       where: { inviteToken: token },
       include: {
-        owner: { select: { id: true, name: true, email: true } },
-        recipient: { select: { id: true, name: true, email: true } },
+        owner: { select: { id: true, username: true, name: true, email: true } },
+        recipient: { select: { id: true, username: true, name: true, email: true } },
       }
     });
 
@@ -69,6 +69,7 @@ export async function GET(
       createdAt: invitation.createdAt.toISOString(),
       owner: {
         id: invitation.owner.id,
+        username: invitation.owner.username,
         name: invitation.owner.name,
       },
       shareEncryptionSalt: invitation.shareEncryptionSalt,

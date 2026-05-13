@@ -38,9 +38,17 @@ export default async function SpacesPage() {
       : Promise.resolve([]),
   ]);
 
+  const spaceIds = memberships.map((m) => m.space.id);
+  const uniqueMembers = await db.spaceMember.findMany({
+    where: { spaceId: { in: spaceIds } },
+    select: { userId: true },
+    distinct: ['userId'],
+  });
+
   return (
     <PrivateSpacesHub
       userId={session.user.id}
+      totalUniqueMembers={uniqueMembers.length}
       spaces={memberships.map(({ space }) => ({
         id: space.id,
         name: space.name,

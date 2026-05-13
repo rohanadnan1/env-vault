@@ -2,6 +2,7 @@
 
 import { useVaultStore, useAutoLock, readKeepVaultUnlockedInTab } from '@/lib/store/vaultStore';
 import { VaultUnlock } from '@/components/vault/VaultUnlock';
+import { UsernameRequiredModal } from '@/components/account/UsernameRequiredModal';
 import { useEffect } from 'react';
 import { toast } from 'sonner';
 
@@ -39,6 +40,7 @@ export function VaultClientWrapper({ children }: { children: React.ReactNode }) 
   return (
     <>
       {!isUnlocked && <VaultUnlock />}
+      {isUnlocked && <UsernameRequiredModal />}
       {children}
     </>
   );

@@ -18,6 +18,7 @@ import {
 } from '@/lib/crypto/recovery';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
+import { PasswordInput } from '@/components/ui/password-input';
 import { Label } from '@/components/ui/label';
 import {
   Fingerprint,
@@ -478,9 +479,8 @@ export function VaultUnlock() {
                 <Monitor className="w-3.5 h-3.5 text-slate-400" />
                 Master Password
               </Label>
-              <Input
+              <PasswordInput
                 id="master-password"
-                type="password"
                 placeholder="••••••••••••"
                 value={password}
                 onChange={(e) => setPassword(e.target.value)}

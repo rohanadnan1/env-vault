@@ -19,7 +19,7 @@ export async function GET(
     const invitation = await db.shareInvitation.findUnique({
       where: { id: invitationId },
       include: {
-        owner: { select: { id: true, name: true, email: true } },
+        owner: { select: { id: true, username: true, name: true, email: true } },
         project: { select: { id: true, name: true, emoji: true, color: true } },
       }
     });
@@ -79,7 +79,7 @@ export async function GET(
       type: string;
       resourceId: string;
       resourceName: string;
-      owner: { id: string; name: string | null; email: string };
+      owner: { id: string; username: string | null; name: string | null; email: string };
       project: { id: string; name: string; emoji: string; color: string } | null;
       status: string;
       inviteToken: string;
